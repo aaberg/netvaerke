@@ -1,8 +1,14 @@
 product: jvm/lib
 
-#dependencies:
+dependencies:
+  - io.nats:jnats:2.26.0
+  # Kotlin's transitive annotations artifact is 13.0, which does not include
+  # UnknownNullability needed when the IDE analyses JSpecify-annotated JNATS APIs.
+  - org.jetbrains:annotations:23.0.0
 
 settings:
   kotlin:
     version: 2.4.10
     allWarningsAsErrors: true
+    serialization:
+      format: json
