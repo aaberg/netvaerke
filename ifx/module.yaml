@@ -6,6 +6,9 @@ dependencies:
   # UnknownNullability needed when the IDE analyses JSpecify-annotated JNATS APIs.
   - org.jetbrains:annotations:23.0.0
 
+test-dependencies:
+  - ../test-support
+
 settings:
   kotlin:
     version: 2.4.10

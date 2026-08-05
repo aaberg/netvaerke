@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class IfxTest {
@@ -40,7 +41,7 @@ class IfxTest {
             runSuspend { ifx.create<GreetingService>().greet(GreetingRequest("Lars")) }
         }
 
-        assertTrue(actual === expected)
+        assertSame(expected, actual)
     }
 
     @Test
@@ -53,7 +54,6 @@ class IfxTest {
         val first = ifx.create<GreetingService>()
         val second = ifx.create<GreetingService>()
 
-        assertTrue(first == first)
         assertNotEquals(first, second)
         assertEquals(System.identityHashCode(first), first.hashCode())
         assertEquals("Ifx proxy for netvaerke.ifx.GreetingService", first.toString())

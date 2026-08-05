@@ -1,0 +1,11 @@
+product: jvm/lib
+
+dependencies:
+  - io.nats:jnats:2.26.0: exported
+  - org.testcontainers:testcontainers:1.21.3
+  - $kotlin.test.junit5
+
+settings:
+  kotlin:
+    version: 2.4.10
+    allWarningsAsErrors: true

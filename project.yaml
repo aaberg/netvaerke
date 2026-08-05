@@ -1,2 +1,3 @@
 modules:
   - ifx
+  - test-support
