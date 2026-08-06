@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: netvaerke
+      POSTGRES_PASSWORD: abc123
+      POSTGRES_DB: netvaerke
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: pg_isready -U netvaerke -d netvaerke
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - default
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  liquibase:
+    build:
+      context: ./liquibase
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://db:5432/netvaerke
+      LIQUIBASE_COMMAND_USERNAME: netvaerke
+      LIQUIBASE_COMMAND_PASSWORD: abc123
+    networks:
+      - default
+
+  nats:
+    image: nats:latest
+    ports:
+      - 4222:4222
+      - 8222:8222
+
+networks:
+  default:
+    name: netvaerke
+
+volumes:
+  db_data:
