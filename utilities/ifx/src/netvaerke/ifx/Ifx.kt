@@ -1,11 +1,13 @@
 package netvaerke.ifx
 
+import io.opentelemetry.api.OpenTelemetry
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 
 public class Ifx internal constructor(
     private val bindings: Map<Class<*>, IfxServiceBinding>,
+    private val tracing: IfxTracing?,
 ) : AutoCloseable {
     private var state = State.CONFIGURED
 
@@ -19,7 +21,14 @@ public class Ifx internal constructor(
             if (method.declaringClass == Any::class.java) {
                 invokeObjectMethod(proxy, method, arguments)
             } else {
-                binding.invoke(method, arguments ?: emptyArray())
+                val invocationArguments = arguments ?: emptyArray()
+                if (tracing == null) {
+                    binding.invoke(method, invocationArguments)
+                } else {
+                    tracing.invokeClient(service, method, invocationArguments) {
+                        binding.invoke(method, it)
+                    }
+                }
             }
         }
 
@@ -38,7 +47,7 @@ public class Ifx internal constructor(
         require(service.isInstance(implementation)) {
             "${implementation::class.java.typeName} does not implement ${service.typeName}"
         }
-        binding.expose(implementation)
+        binding.expose(tracing?.wrapServer(service, implementation) ?: implementation)
     }
 
     public fun start(): Ifx {
@@ -78,7 +87,14 @@ public class Ifx internal constructor(
 }
 
 public class IfxBuilder {
-    private val bindings = linkedMapOf<Class<*>, IfxServiceBinding>()
+    private val services = linkedMapOf<Class<*>, IfxTransport>()
+    private var openTelemetry: OpenTelemetry? = null
+
+    /** Enables OpenTelemetry tracing for all services configured in this IFX instance. */
+    public fun tracing(openTelemetry: OpenTelemetry) {
+        require(this.openTelemetry == null) { "OpenTelemetry tracing is already configured" }
+        this.openTelemetry = openTelemetry
+    }
 
     public inline fun <reified T : Any> service(noinline configuration: IfxServiceConfiguration.() -> Unit) {
         service(T::class.java, configuration)
@@ -88,13 +104,21 @@ public class IfxBuilder {
         service: Class<T>,
         configuration: IfxServiceConfiguration.() -> Unit,
     ) {
-        require(service !in bindings) { "${service.typeName} is already configured" }
+        require(service !in services) { "${service.typeName} is already configured" }
         ServiceContract.validate(service)
         val transport = IfxServiceConfiguration().apply(configuration).transport()
-        bindings[service] = transport.bind(service)
+        services[service] = transport
     }
 
-    internal fun build(): Ifx = Ifx(bindings.toMap())
+    internal fun build(): Ifx {
+        val bindings = services.mapValues { (service, transport) ->
+            transport.bind(service, openTelemetry)
+        }
+        return Ifx(
+            bindings = bindings,
+            tracing = openTelemetry?.let(::IfxTracing),
+        )
+    }
 }
 
 public class IfxServiceConfiguration internal constructor() {

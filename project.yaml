@@ -1,3 +1,4 @@
 modules:
-  - ifx
-  - test-support
+  - access/contact-access
+  - utilities/ifx
+  - utilities/test-support

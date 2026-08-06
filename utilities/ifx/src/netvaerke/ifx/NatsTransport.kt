@@ -3,6 +3,12 @@ package netvaerke.ifx
 import io.nats.client.Connection
 import io.nats.client.Dispatcher
 import io.nats.client.Message
+import io.nats.client.impl.Headers
+import io.opentelemetry.api.OpenTelemetry
+import io.opentelemetry.context.Context
+import io.opentelemetry.context.propagation.TextMapGetter
+import io.opentelemetry.context.propagation.TextMapPropagator
+import io.opentelemetry.context.propagation.TextMapSetter
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.ParameterizedType
@@ -40,15 +46,19 @@ public class NatsTransport(
         require(queueGroup.isNotBlank() && queueGroup.none(Char::isWhitespace)) {
             "NATS queue group cannot be blank or contain whitespace"
         }
-        return IfxTransport { service ->
-            NatsRequestReplyBinding(
-                service = service,
-                connection = connection,
-                json = json,
-                requestTimeout = requestTimeout,
-                subject = subject,
-                queueGroup = queueGroup,
-            )
+        return object : IfxTransport {
+            override fun bind(service: Class<*>): IfxServiceBinding = bind(service, null)
+
+            override fun bind(service: Class<*>, openTelemetry: OpenTelemetry?): IfxServiceBinding =
+                NatsRequestReplyBinding(
+                    service = service,
+                    connection = connection,
+                    json = json,
+                    requestTimeout = requestTimeout,
+                    subject = subject,
+                    queueGroup = queueGroup,
+                    propagator = openTelemetry?.propagators?.textMapPropagator,
+                )
         }
     }
 }
@@ -66,6 +76,7 @@ private class NatsRequestReplyBinding(
     private val requestTimeout: Duration,
     subject: String,
     private val queueGroup: String,
+    private val propagator: TextMapPropagator?,
 ) : IfxServiceBinding {
     private val codecs = service.methods
         .filterNot { it.declaringClass == Any::class.java }
@@ -100,7 +111,7 @@ private class NatsRequestReplyBinding(
         val continuation = arguments.last().asContinuation()
         val payload = json.encodeToString(codec.requestSerializer, arguments.first()).encodeToByteArray()
 
-        connection.requestWithTimeout(codec.subject, payload, requestTimeout.toJavaDuration())
+        request(codec.subject, payload)
             .whenComplete { message, failure ->
                 val result = if (failure == null) {
                     runCatching { decodeReply(codec, checkNotNull(message)) }
@@ -138,6 +149,7 @@ private class NatsRequestReplyBinding(
         val target = implementation ?: return
         val replyTo = message.replyTo ?: return
 
+        val scope = extractContext(message).makeCurrent()
         try {
             val request = json.decodeFromString(codec.requestSerializer, message.data.decodeToString())
             val continuation = object : Continuation<Any?> {
@@ -158,8 +170,24 @@ private class NatsRequestReplyBinding(
                 exception
             }
             publishReply(replyTo, codec, Result.failure(failure))
+        } finally {
+            scope.close()
         }
     }
+
+    private fun request(subject: String, payload: ByteArray) =
+        propagator?.let { propagator ->
+            val headers = Headers()
+            propagator.inject(Context.current(), headers, NatsHeaderSetter)
+            connection.requestWithTimeout(subject, headers, payload, requestTimeout.toJavaDuration())
+        } ?: connection.requestWithTimeout(subject, payload, requestTimeout.toJavaDuration())
+
+    private fun extractContext(message: Message): Context =
+        if (propagator == null || !message.hasHeaders()) {
+            Context.root()
+        } else {
+            propagator.extract(Context.root(), message.headers, NatsHeaderGetter)
+        }
 
     private fun publishReply(replyTo: String, codec: MethodCodec, result: Result<Any?>) {
         val reply = result.fold(
@@ -241,4 +269,17 @@ private fun requireValidNatsSubject(subject: String) {
     ) {
         "NATS service subject must contain non-empty tokens without whitespace or wildcards"
     }
+}
+
+private object NatsHeaderSetter : TextMapSetter<Headers> {
+    override fun set(carrier: Headers?, key: String, value: String) {
+        carrier?.put(key, value)
+    }
+}
+
+private object NatsHeaderGetter : TextMapGetter<Headers> {
+    override fun keys(carrier: Headers): Iterable<String> = carrier.keySet()
+
+    override fun get(carrier: Headers?, key: String): String? =
+        carrier?.getIgnoreCase(key)?.firstOrNull()
 }

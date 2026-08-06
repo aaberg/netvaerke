@@ -1,8 +1,11 @@
 package netvaerke.ifx
 
+import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanContext
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
@@ -60,6 +63,45 @@ class NatsTransportTest {
                 assertEquals("java.lang.IllegalStateException", failure.remoteType)
                 assertTrue(failure.message.orEmpty().contains("Greeting failed"))
             }
+        }
+    }
+
+    @Test
+    fun `propagates trace context through NATS headers`() {
+        val tracing = TestTracing.create()
+        try {
+            val subject = natsSubject()
+            val serverSpan = AtomicReference<SpanContext>()
+            NatsTestBroker.openConnection().use { connection ->
+                Ifx {
+                    tracing(tracing.openTelemetry)
+                    service<NatsGreetingService> {
+                        via(NatsTransport(connection).requestReply(subject))
+                    }
+                }.use { ifx ->
+                    ifx.expose<NatsGreetingService>(object : NatsGreetingService {
+                        override suspend fun greet(request: NatsGreetingRequest): NatsGreetingResponse {
+                            serverSpan.set(Span.current().spanContext)
+                            return NatsGreetingResponse("Hello, ${request.name}")
+                        }
+                    })
+                    ifx.start()
+
+                    runNatsSuspend {
+                        ifx.create<NatsGreetingService>().greet(NatsGreetingRequest("Lars"))
+                    }
+                }
+            }
+
+            val spans = tracing.exporter.finishedSpanItems.associateBy { it.name }
+            val client = checkNotNull(spans["ifx.client netvaerke.ifx.NatsGreetingService.greet"])
+            val server = checkNotNull(spans["ifx.server netvaerke.ifx.NatsGreetingService.greet"])
+
+            assertEquals(client.spanContext.traceId, server.spanContext.traceId)
+            assertEquals(client.spanContext.spanId, server.parentSpanContext.spanId)
+            assertEquals(server.spanContext, serverSpan.get())
+        } finally {
+            tracing.close()
         }
     }
 }
