@@ -2,6 +2,12 @@ product: jvm/lib
 
 dependencies:
   - ../../utilities/ifx
+  - org.postgresql:postgresql:42.7.7
+
+test-dependencies:
+  - ../../utilities/test-support
+  - org.liquibase:liquibase-core:5.0.1
+  - $kotlin.test.junit5
 
 settings:
   kotlin:

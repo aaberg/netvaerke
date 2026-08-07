@@ -2,27 +2,27 @@ package nettvaerke.access.contact
 
 sealed class ContactDetail
 
-data class EmailAddress (
+data class EmailAddress(
     val value: String,
     val isPrimary: Boolean,
     val label: String? = null
 ) : ContactDetail()
 
-data class PhoneNumber (
+data class PhoneNumber(
     val value: String,
     val label: String? = null
 ) : ContactDetail()
 
-data class Note (
+data class Note(
     val value: String,
 ) : ContactDetail()
 
-data class WorkInfo (
+data class WorkInfo(
     val title: String? = null,
     val organization: String? = null,
-)
+) : ContactDetail()
 
-data class ContactImage (
+data class ContactImage(
     val fileKey: String,
     val mimeType: String,
-)
+) : ContactDetail()

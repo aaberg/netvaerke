@@ -2,7 +2,9 @@ product: jvm/lib
 
 dependencies:
   - io.nats:jnats:2.26.0: exported
+  - org.postgresql:postgresql:42.7.7
   - org.testcontainers:testcontainers:1.21.3
+  - org.testcontainers:postgresql:1.21.3
   - $kotlin.test.junit5
 
 settings:
