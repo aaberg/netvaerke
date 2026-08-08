@@ -1,3 +1,5 @@
 databaseChangeLog:
   - include:
       file: "./changelog/contact-changelog.sql"
+  - include:
+      file: "./changelog/profile-changelog.sql"

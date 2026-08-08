@@ -2,11 +2,10 @@ product: jvm/lib
 
 dependencies:
   - ../../utilities/ifx
-  - org.postgresql:postgresql:42.7.7
+  - ../../access/contact-access
 
 test-dependencies:
   - ../../utilities/test-support
-  - org.liquibase:liquibase-core:5.0.1
 
 settings:
   kotlin:
