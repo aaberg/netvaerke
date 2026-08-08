@@ -3,3 +3,5 @@ databaseChangeLog:
       file: "./changelog/contact-changelog.sql"
   - include:
       file: "./changelog/profile-changelog.sql"
+  - include:
+      file: "./changelog/tenant-changelog.sql"
