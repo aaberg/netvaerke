@@ -7,8 +7,11 @@ import javax.sql.DataSource
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.runBlocking
 import liquibase.Contexts
 import liquibase.LabelExpression
 import liquibase.Liquibase
@@ -18,6 +21,12 @@ import liquibase.resource.DirectoryResourceAccessor
 import netvaerke.access.tenant.Tenant
 import netvaerke.access.tenant.TenantAccess
 import netvaerke.access.tenant.TenantAccessImpl
+import netvaerke.access.tenant.AddTenantMemberRequest
+import netvaerke.access.tenant.GetTenantMembersRequest
+import netvaerke.access.tenant.GetTenantRequest
+import netvaerke.access.tenant.GetUserTenantsRequest
+import netvaerke.access.tenant.RegisterTenantRequest
+import netvaerke.access.tenant.RemoveTenantMemberRequest
 import netvaerke.access.tenant.TenantMember
 import netvaerke.access.tenant.TenantMemberRole
 import netvaerke.access.tenant.TenantType
@@ -40,7 +49,7 @@ class TenantRepositoryTest {
     }
 
     @Test
-    fun `registers a tenant and its members`() {
+    fun `registers a tenant and its members`() = runBlocking {
         val ownerId = randomUuid()
         val memberId = randomUuid()
         val tenant = Tenant(
@@ -54,16 +63,19 @@ class TenantRepositoryTest {
             TenantMember(memberId, tenant.id, TenantMemberRole.MEMBER),
         )
 
-        access.registerTenant(tenant, members)
+        access.registerTenant(RegisterTenantRequest(tenant, members))
 
-        assertEquals(tenant, access.getTenant(tenant.id))
-        assertEquals(members.sortedBy { it.userId.toString() }, access.getTenantMembers(tenant.id))
-        assertEquals(listOf(members[1]), access.getUserTenants(memberId))
-        assertNull(access.getTenant(randomUuid()))
+        assertEquals(tenant, access.getTenant(GetTenantRequest(tenant.id)))
+        assertEquals(
+            members.sortedBy { it.userId.toString() },
+            access.getTenantMembers(GetTenantMembersRequest(tenant.id)),
+        )
+        assertEquals(listOf(members[1]), access.getUserTenants(GetUserTenantsRequest(memberId)))
+        assertNull(access.getTenant(GetTenantRequest(randomUuid())))
     }
 
     @Test
-    fun `updates and removes tenant members`() {
+    fun `updates and removes tenant members`() = runBlocking {
         val ownerId = randomUuid()
         val memberId = randomUuid()
         val tenant = Tenant(
@@ -74,22 +86,41 @@ class TenantRepositoryTest {
         )
         val owner = TenantMember(ownerId, tenant.id, TenantMemberRole.OWNER)
         val member = TenantMember(memberId, tenant.id, TenantMemberRole.MEMBER)
-        access.registerTenant(tenant, listOf(owner))
+        access.registerTenant(RegisterTenantRequest(tenant, listOf(owner)))
 
-        access.addTenantMember(member)
+        access.addTenantMember(AddTenantMemberRequest(member))
         val promotedMember = member.copy(role = TenantMemberRole.OWNER)
-        access.addTenantMember(promotedMember)
+        access.addTenantMember(AddTenantMemberRequest(promotedMember))
 
         assertEquals(
             tenant.copy(owners = listOf(ownerId, memberId).sortedBy { it.toString() }),
-            access.getTenant(tenant.id),
+            access.getTenant(GetTenantRequest(tenant.id)),
         )
-        assertEquals(listOf(promotedMember), access.getUserTenants(memberId))
+        assertEquals(listOf(promotedMember), access.getUserTenants(GetUserTenantsRequest(memberId)))
 
-        access.removeTenantMember(promotedMember)
+        access.removeTenantMember(RemoveTenantMemberRequest(promotedMember))
 
-        assertEquals(listOf(owner), access.getTenantMembers(tenant.id))
-        assertEquals(emptyList(), access.getUserTenants(memberId))
+        assertEquals(listOf(owner), access.getTenantMembers(GetTenantMembersRequest(tenant.id)))
+        assertEquals(emptyList(), access.getUserTenants(GetUserTenantsRequest(memberId)))
+    }
+
+    @Test
+    fun `rejects owners that do not match owner memberships`() = runBlocking {
+        val ownerId = randomUuid()
+        val tenant = Tenant(
+            id = randomUuid(),
+            type = TenantType.PERSONAL,
+            name = "Ada Lovelace",
+            owners = listOf(ownerId),
+        )
+        val nonOwnerMembership = TenantMember(ownerId, tenant.id, TenantMemberRole.MEMBER)
+
+        val failure = assertFailsWith<IllegalArgumentException> {
+            access.registerTenant(RegisterTenantRequest(tenant, listOf(nonOwnerMembership)))
+        }
+
+        assertTrue(failure.message.orEmpty().contains("owners must match"))
+        assertNull(access.getTenant(GetTenantRequest(tenant.id)))
     }
 }
 

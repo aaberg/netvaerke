@@ -4,6 +4,8 @@ import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.StatusCode
+import io.opentelemetry.context.Context
+import io.opentelemetry.extension.kotlin.asContextElement
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
@@ -53,8 +55,9 @@ internal class IfxTracing(
             .setAttribute("rpc.method", method.name)
             .startSpan()
         val originalContinuation = arguments.lastOrNull().asContinuation()
+        val spanContext = Context.current().with(span).asContextElement()
         val tracedContinuation = object : Continuation<Any?> {
-            override val context = originalContinuation.context
+            override val context = originalContinuation.context + spanContext
 
             override fun resumeWith(result: Result<Any?>) {
                 finish(span, result.exceptionOrNull())

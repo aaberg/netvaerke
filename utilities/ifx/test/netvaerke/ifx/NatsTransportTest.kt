@@ -13,6 +13,12 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import kotlinx.serialization.Serializable
 import netvaerke.testsupport.NatsTestBroker
 
@@ -49,6 +55,7 @@ class NatsTransportTest {
             }.use { ifx ->
                 ifx.expose<NatsGreetingService>(object : NatsGreetingService {
                     override suspend fun greet(request: NatsGreetingRequest): NatsGreetingResponse {
+                        yield()
                         throw IllegalStateException("Greeting failed")
                     }
                 })
@@ -81,6 +88,7 @@ class NatsTransportTest {
                 }.use { ifx ->
                     ifx.expose<NatsGreetingService>(object : NatsGreetingService {
                         override suspend fun greet(request: NatsGreetingRequest): NatsGreetingResponse {
+                            yield()
                             serverSpan.set(Span.current().spanContext)
                             return NatsGreetingResponse("Hello, ${request.name}")
                         }
@@ -102,6 +110,43 @@ class NatsTransportTest {
             assertEquals(server.spanContext, serverSpan.get())
         } finally {
             tracing.close()
+        }
+    }
+
+    @Test
+    fun `cancels running service handlers when IFX closes`() = runBlocking {
+        val subject = natsSubject()
+        val started = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
+        NatsTestBroker.openConnection().use { connection ->
+            val ifx = Ifx {
+                service<NatsGreetingService> {
+                    via(NatsTransport(connection).requestReply(subject))
+                }
+            }
+            ifx.expose<NatsGreetingService>(object : NatsGreetingService {
+                override suspend fun greet(request: NatsGreetingRequest): NatsGreetingResponse {
+                    started.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        cancelled.complete(Unit)
+                    }
+                }
+            })
+            ifx.start()
+            val request = async {
+                ifx.create<NatsGreetingService>().greet(NatsGreetingRequest("Lars"))
+            }
+
+            try {
+                started.await()
+                ifx.close()
+                cancelled.await()
+            } finally {
+                ifx.close()
+                request.cancelAndJoin()
+            }
         }
     }
 }

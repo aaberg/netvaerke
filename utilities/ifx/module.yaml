@@ -3,6 +3,8 @@ product: jvm/lib
 dependencies:
   - io.nats:jnats:2.26.0
   - io.opentelemetry:opentelemetry-api:1.63.0
+  - io.opentelemetry:opentelemetry-extension-kotlin:1.63.0
+  - org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2
   # Kotlin's transitive annotations artifact is 13.0, which does not include
   # UnknownNullability needed when the IDE analyses JSpecify-annotated JNATS APIs.
   - org.jetbrains:annotations:23.0.0

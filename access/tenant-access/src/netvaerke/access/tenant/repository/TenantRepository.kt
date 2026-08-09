@@ -16,6 +16,19 @@ class TenantRepository(
         require(tenantMembers.all { it.tenantId == tenant.id }) {
             "Tenant members must belong to the tenant being registered"
         }
+        require(tenantMembers.map(TenantMemberEntity::userId).distinct().size == tenantMembers.size) {
+            "A user can only have one membership in a tenant"
+        }
+        require(tenant.owners.distinct().size == tenant.owners.size) {
+            "Tenant owners must be unique"
+        }
+        val memberOwners = tenantMembers
+            .filter { it.role == TenantMemberRole.OWNER }
+            .map(TenantMemberEntity::userId)
+            .toSet()
+        require(tenant.owners.toSet() == memberOwners) {
+            "Tenant owners must match members with the OWNER role"
+        }
 
         dataSource.connection.use { connection ->
             val autoCommit = connection.autoCommit

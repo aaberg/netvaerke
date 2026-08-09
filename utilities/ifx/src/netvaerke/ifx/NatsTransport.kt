@@ -9,19 +9,28 @@ import io.opentelemetry.context.Context
 import io.opentelemetry.context.propagation.TextMapGetter
 import io.opentelemetry.context.propagation.TextMapPropagator
 import io.opentelemetry.context.propagation.TextMapSetter
-import java.lang.reflect.InvocationTargetException
+import io.opentelemetry.extension.kotlin.asContextElement
 import java.lang.reflect.Method
 import java.lang.reflect.ParameterizedType
 import java.lang.reflect.Type
 import java.lang.reflect.WildcardType
 import java.time.Duration as JavaDuration
 import java.util.concurrent.CompletionException
+import java.util.concurrent.CancellationException
 import kotlin.coroutines.Continuation
-import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.startCoroutine
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -33,6 +42,7 @@ public class NatsTransport(
     private val connection: Connection,
     private val json: Json = Json,
     private val requestTimeout: Duration = 5.seconds,
+    private val requestHandlerDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     init {
         require(requestTimeout.isPositive()) { "NATS request timeout must be positive" }
@@ -58,6 +68,7 @@ public class NatsTransport(
                     subject = subject,
                     queueGroup = queueGroup,
                     propagator = openTelemetry?.propagators?.textMapPropagator,
+                    requestHandlerDispatcher = requestHandlerDispatcher,
                 )
         }
     }
@@ -77,6 +88,7 @@ private class NatsRequestReplyBinding(
     subject: String,
     private val queueGroup: String,
     private val propagator: TextMapPropagator?,
+    requestHandlerDispatcher: CoroutineDispatcher,
 ) : IfxServiceBinding {
     private val codecs = service.methods
         .filterNot { it.declaringClass == Any::class.java }
@@ -93,6 +105,7 @@ private class NatsRequestReplyBinding(
             )
         }
     private val codecsBySubject = codecs.values.associateBy(MethodCodec::subject)
+    private val requestScope = CoroutineScope(SupervisorJob() + requestHandlerDispatcher)
     private var implementation: Any? = null
     private var dispatcher: Dispatcher? = null
 
@@ -109,17 +122,8 @@ private class NatsRequestReplyBinding(
             "${service.typeName}.${method.name} is not a configured operation"
         }
         val continuation = arguments.last().asContinuation()
-        val payload = json.encodeToString(codec.requestSerializer, arguments.first()).encodeToByteArray()
-
-        request(codec.subject, payload)
-            .whenComplete { message, failure ->
-                val result = if (failure == null) {
-                    runCatching { decodeReply(codec, checkNotNull(message)) }
-                } else {
-                    Result.failure(failure.unwrapCompletionException())
-                }
-                continuation.resumeWith(result)
-            }
+        val requestObject = arguments.first()
+        suspend { invokeRemote(codec, requestObject) }.startCoroutine(continuation)
         return COROUTINE_SUSPENDED
     }
 
@@ -142,6 +146,7 @@ private class NatsRequestReplyBinding(
     override fun close() {
         dispatcher?.let(connection::closeDispatcher)
         dispatcher = null
+        requestScope.cancel()
     }
 
     private fun handleRequest(message: Message) {
@@ -149,31 +154,48 @@ private class NatsRequestReplyBinding(
         val target = implementation ?: return
         val replyTo = message.replyTo ?: return
 
-        val scope = extractContext(message).makeCurrent()
-        try {
-            val request = json.decodeFromString(codec.requestSerializer, message.data.decodeToString())
-            val continuation = object : Continuation<Any?> {
-                override val context: CoroutineContext = EmptyCoroutineContext
-
-                override fun resumeWith(result: Result<Any?>) {
-                    publishReply(replyTo, codec, result)
-                }
+        requestScope.launch(extractContext(message).asContextElement()) {
+            val result = try {
+                val request = json.decodeFromString(codec.requestSerializer, message.data.decodeToString())
+                Result.success(invokeService(codec, target, request))
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Throwable) {
+                Result.failure(failure)
             }
-            val returned = codec.method.invoke(target, request, continuation)
-            if (returned !== COROUTINE_SUSPENDED) {
-                publishReply(replyTo, codec, Result.success(returned))
-            }
-        } catch (exception: Throwable) {
-            val failure = if (exception is InvocationTargetException) {
-                exception.targetException
-            } else {
-                exception
-            }
-            publishReply(replyTo, codec, Result.failure(failure))
-        } finally {
-            scope.close()
+            publishReply(replyTo, codec, result)
         }
     }
+
+    private suspend fun invokeRemote(codec: MethodCodec, requestObject: Any?): Any? {
+        val payload = json.encodeToString(codec.requestSerializer, requestObject).encodeToByteArray()
+        return suspendCancellableCoroutine { continuation ->
+            val pendingRequest = request(codec.subject, payload)
+            continuation.invokeOnCancellation { pendingRequest.cancel(true) }
+            pendingRequest.whenComplete { message, failure ->
+                val result = if (failure == null) {
+                    runCatching { decodeReply(codec, checkNotNull(message)) }
+                } else {
+                    Result.failure(failure.unwrapCompletionException())
+                }
+                continuation.resumeWith(result)
+            }
+        }
+    }
+
+    private suspend fun invokeService(codec: MethodCodec, target: Any, request: Any?): Any? =
+        suspendCancellableCoroutine { continuation ->
+            try {
+                val returned = codec.method.invoke(target, request, continuation)
+                if (returned !== COROUTINE_SUSPENDED) {
+                    continuation.resume(returned)
+                }
+            } catch (exception: java.lang.reflect.InvocationTargetException) {
+                continuation.resumeWithException(exception.targetException)
+            } catch (failure: Throwable) {
+                continuation.resumeWithException(failure)
+            }
+        }
 
     private fun request(subject: String, payload: ByteArray) =
         propagator?.let { propagator ->

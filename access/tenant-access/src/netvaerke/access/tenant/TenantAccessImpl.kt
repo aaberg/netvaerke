@@ -1,32 +1,50 @@
 package netvaerke.access.tenant
 
-import kotlin.uuid.Uuid
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import netvaerke.access.tenant.repository.TenantEntity
 import netvaerke.access.tenant.repository.TenantMemberEntity
 import netvaerke.access.tenant.repository.TenantRepository
 
 class TenantAccessImpl(
     private val repository: TenantRepository,
+    private val jdbcDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : TenantAccess {
-    override fun getTenant(id: Uuid): Tenant? =
-        repository.getTenant(id)?.toTenant()
+    override suspend fun getTenant(request: GetTenantRequest): Tenant? =
+        withContext(jdbcDispatcher) {
+            repository.getTenant(request.id)
+        }?.toTenant()
 
-    override fun getUserTenants(userId: Uuid): List<TenantMember> =
-        repository.getUserTenants(userId).map { it.toTenantMember() }
+    override suspend fun getUserTenants(request: GetUserTenantsRequest): List<TenantMember> =
+        withContext(jdbcDispatcher) {
+            repository.getUserTenants(request.userId)
+        }.map { it.toTenantMember() }
 
-    override fun getTenantMembers(tenantId: Uuid): List<TenantMember> =
-        repository.getTenantMembers(tenantId).map { it.toTenantMember() }
+    override suspend fun getTenantMembers(request: GetTenantMembersRequest): List<TenantMember> =
+        withContext(jdbcDispatcher) {
+            repository.getTenantMembers(request.tenantId)
+        }.map { it.toTenantMember() }
 
-    override fun registerTenant(tenant: Tenant, tenantMembers: List<TenantMember>) {
-        repository.registerTenant(tenant.toEntity(), tenantMembers.map { it.toEntity() })
+    override suspend fun registerTenant(request: RegisterTenantRequest) {
+        withContext(jdbcDispatcher) {
+            repository.registerTenant(
+                request.tenant.toEntity(),
+                request.tenantMembers.map { it.toEntity() },
+            )
+        }
     }
 
-    override fun addTenantMember(tenantMember: TenantMember) {
-        repository.addTenantMember(tenantMember.toEntity())
+    override suspend fun addTenantMember(request: AddTenantMemberRequest) {
+        withContext(jdbcDispatcher) {
+            repository.addTenantMember(request.tenantMember.toEntity())
+        }
     }
 
-    override fun removeTenantMember(tenantMember: TenantMember) {
-        repository.removeTenantMember(tenantMember.toEntity())
+    override suspend fun removeTenantMember(request: RemoveTenantMemberRequest) {
+        withContext(jdbcDispatcher) {
+            repository.removeTenantMember(request.tenantMember.toEntity())
+        }
     }
 
     private fun Tenant.toEntity(): TenantEntity = TenantEntity(
