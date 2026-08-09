@@ -1,10 +1,11 @@
 package netvaerke.manager.membership
 
 import kotlin.uuid.Uuid
+import kotlinx.serialization.Serializable
 
-data class RegisterProfileRequest (
+@Serializable
+data class RegisterProfileRequest(
     val userId: Uuid,
     val name: String,
-    val email: String
+    val email: String,
 )
-

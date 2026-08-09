@@ -19,6 +19,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.runBlocking
 
 class ProfileRepositoryTest {
     private val dataSource: DataSource
@@ -37,7 +38,7 @@ class ProfileRepositoryTest {
     }
 
     @Test
-    fun `registers and retrieves a profile`() {
+    fun `registers and retrieves a profile`() = runBlocking {
         val profile = Profile(
             userId = randomUuid(),
             name = "Ada Lovelace",
@@ -50,7 +51,7 @@ class ProfileRepositoryTest {
     }
 
     @Test
-    fun `updates a registered profile and returns null for an unknown user`() {
+    fun `updates a registered profile and returns null for an unknown user`() = runBlocking {
         val userId = randomUuid()
         val profile = Profile(
             userId = userId,

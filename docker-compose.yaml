@@ -3,13 +3,13 @@ services:
     image: postgres:17-alpine
     restart: always
     environment:
-      POSTGRES_USER: netvaerke
-      POSTGRES_PASSWORD: abc123
-      POSTGRES_DB: netvaerke
+      POSTGRES_USER: ${POSTGRES_USER:-netvaerke}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-abc123}
+      POSTGRES_DB: ${POSTGRES_DB:-netvaerke}
     ports:
       - "5432:5432"
     healthcheck:
-      test: pg_isready -U netvaerke -d netvaerke
+      test: pg_isready -U ${POSTGRES_USER:-netvaerke} -d ${POSTGRES_DB:-netvaerke}
       interval: 10s
       timeout: 10s
       retries: 5
@@ -27,17 +27,36 @@ services:
       db:
         condition: service_healthy
     environment:
-      LIQUIBASE_COMMAND_URL: jdbc:postgresql://db:5432/netvaerke
-      LIQUIBASE_COMMAND_USERNAME: netvaerke
-      LIQUIBASE_COMMAND_PASSWORD: abc123
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-netvaerke}
+      LIQUIBASE_COMMAND_USERNAME: ${POSTGRES_USER:-netvaerke}
+      LIQUIBASE_COMMAND_PASSWORD: ${POSTGRES_PASSWORD:-abc123}
     networks:
       - default
 
   nats:
-    image: nats:latest
+    image: nats:2.12.11-alpine
     ports:
       - 4222:4222
       - 8222:8222
+
+  membership-manager:
+    build:
+      context: .
+      dockerfile: businesslogic/membership-manager/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      liquibase:
+        condition: service_completed_successfully
+      nats:
+        condition: service_started
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-netvaerke}
+      DATABASE_USER: ${POSTGRES_USER:-netvaerke}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-abc123}
+      NATS_URL: nats://nats:4222
+      MEMBERSHIP_NATS_SUBJECT: ${MEMBERSHIP_NATS_SUBJECT:-netvaerke.membership-manager.v1}
+      MEMBERSHIP_NATS_QUEUE_GROUP: ${MEMBERSHIP_NATS_QUEUE_GROUP:-netvaerke.membership-manager.v1}
+      MEMBERSHIP_NATS_TIMEOUT_SECONDS: ${MEMBERSHIP_NATS_TIMEOUT_SECONDS:-5}
 
 networks:
   default:
