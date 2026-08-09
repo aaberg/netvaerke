@@ -1,4 +1,4 @@
-package nettvaerke.access.contact.repository
+package netvaerke.access.contact.repository
 
 import java.time.Instant
 import kotlin.uuid.Uuid

@@ -1,13 +1,13 @@
-package nettvaerke.access.contact
+package netvaerke.access.contact
 
-import nettvaerke.access.contact.repository.ContactDetailEntity
-import nettvaerke.access.contact.repository.ContactEntity
-import nettvaerke.access.contact.repository.ContactImageEntity
-import nettvaerke.access.contact.repository.ContactRepository
-import nettvaerke.access.contact.repository.EmailAddressEntity
-import nettvaerke.access.contact.repository.NoteEntity
-import nettvaerke.access.contact.repository.PhoneNumberEntity
-import nettvaerke.access.contact.repository.WorkInfoEntity
+import netvaerke.access.contact.repository.ContactDetailEntity
+import netvaerke.access.contact.repository.ContactEntity
+import netvaerke.access.contact.repository.ContactImageEntity
+import netvaerke.access.contact.repository.ContactRepository
+import netvaerke.access.contact.repository.EmailAddressEntity
+import netvaerke.access.contact.repository.NoteEntity
+import netvaerke.access.contact.repository.PhoneNumberEntity
+import netvaerke.access.contact.repository.WorkInfoEntity
 import kotlin.uuid.Uuid
 
 class ContactAccessImpl(

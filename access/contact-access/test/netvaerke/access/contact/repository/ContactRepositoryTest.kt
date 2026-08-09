@@ -1,4 +1,4 @@
-package nettvaerke.access.contact.repository
+package netvaerke.access.contact.repository
 
 import liquibase.Contexts
 import liquibase.LabelExpression
@@ -6,7 +6,14 @@ import liquibase.Liquibase
 import liquibase.database.DatabaseFactory
 import liquibase.database.jvm.JdbcConnection
 import liquibase.resource.DirectoryResourceAccessor
-import nettvaerke.access.contact.*
+import netvaerke.access.contact.Contact
+import netvaerke.access.contact.ContactAccess
+import netvaerke.access.contact.ContactAccessImpl
+import netvaerke.access.contact.ContactImage
+import netvaerke.access.contact.EmailAddress
+import netvaerke.access.contact.Note
+import netvaerke.access.contact.PhoneNumber
+import netvaerke.access.contact.WorkInfo
 import netvaerke.testsupport.PostgresTestDatabase
 import java.nio.file.Files
 import java.nio.file.Path

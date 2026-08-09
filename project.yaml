@@ -2,6 +2,7 @@ modules:
   - access/contact-access
   - access/profile-access
   - access/tenant-access
+  - businesslogic/membership-manager
   - businesslogic/network-manager
   - utilities/ifx
   - utilities/test-support

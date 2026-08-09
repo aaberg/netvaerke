@@ -1,4 +1,4 @@
-package nettvaerke.access.contact
+package netvaerke.access.contact
 
 import kotlin.uuid.Uuid
 

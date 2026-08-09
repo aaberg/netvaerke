@@ -1,4 +1,4 @@
-package nettvaerke.access.contact.repository
+package netvaerke.access.contact.repository
 
 import kotlinx.serialization.json.Json
 import java.sql.ResultSet
