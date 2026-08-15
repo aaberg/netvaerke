@@ -1,0 +1,15 @@
+product: jvm/app
+
+dependencies:
+  - ../../utilities/ifx
+  - ../../businesslogic/membership-manager
+  - ../../businesslogic/network-manager
+
+test-dependencies:
+  - ../../utilities/test-support
+
+settings:
+  kotlin:
+    version: 2.4.10
+    allWarningsAsErrors: true
+    serialization: json

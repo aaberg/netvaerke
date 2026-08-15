@@ -36,27 +36,57 @@ services:
   nats:
     image: nats:2.12.11-alpine
     ports:
-      - 4222:4222
-      - 8222:8222
+      - "4222:4222"
+      - "8222:8222"
 
-  membership-manager:
-    build:
-      context: .
-      dockerfile: businesslogic/membership-manager/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      liquibase:
-        condition: service_completed_successfully
-      nats:
-        condition: service_started
+# hanko services
+  postgres_hanko:
+    image: postgres:17-alpine
+#    ports:
+#      - "5433:5432"
     environment:
-      DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-netvaerke}
-      DATABASE_USER: ${POSTGRES_USER:-netvaerke}
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-abc123}
-      NATS_URL: nats://nats:4222
-      MEMBERSHIP_NATS_SUBJECT: ${MEMBERSHIP_NATS_SUBJECT:-netvaerke.membership-manager.v1}
-      MEMBERSHIP_NATS_QUEUE_GROUP: ${MEMBERSHIP_NATS_QUEUE_GROUP:-netvaerke.membership-manager.v1}
-      MEMBERSHIP_NATS_TIMEOUT_SECONDS: ${MEMBERSHIP_NATS_TIMEOUT_SECONDS:-5}
+      - POSTGRES_USER=hanko
+      - POSTGRES_PASSWORD=hanko
+      - POSTGRES_DB=hanko
+    healthcheck:
+      test: pg_isready -U hanko -d hanko
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - default
+    volumes:
+      - hanko_data:/var/lib/postgresql/data
+
+  hanko-migrate:
+    image: ghcr.io/teamhanko/hanko:latest
+    depends_on:
+      postgres_hanko:
+        condition: service_healthy
+    volumes:
+      - ./hanko-config.yaml:/etc/hanko/config.yaml:ro,z
+    command: --config /etc/hanko/config.yaml migrate up
+
+  hanko:
+    image: ghcr.io/teamhanko/hanko:latest
+    depends_on:
+      hanko-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"  # Public API
+      - "8001:8001"  # Admin API
+    volumes:
+      - ./hanko-config.yaml:/etc/hanko/config.yaml:ro,z
+    command: serve --config /etc/hanko/config.yaml all
+
+  mailslurper:
+    image: marcopas/docker-mailslurper:latest
+    ports:
+      - '8090:8080' # web UI
+      - '8085:8085'
+    networks:
+      - default
 
 networks:
   default:
@@ -64,3 +94,4 @@ networks:
 
 volumes:
   db_data:
+  hanko_data:

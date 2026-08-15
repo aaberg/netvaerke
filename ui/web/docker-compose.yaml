@@ -1,0 +1,22 @@
+include:
+  - ../../docker-compose.yaml
+
+services:
+  membership-manager:
+    build:
+      context: ../..
+      dockerfile: businesslogic/membership-manager/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      liquibase:
+        condition: service_completed_successfully
+      nats:
+        condition: service_started
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-netvaerke}
+      DATABASE_USER: ${POSTGRES_USER:-netvaerke}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-abc123}
+      NATS_URL: nats://nats:4222
+      MEMBERSHIP_NATS_SUBJECT: ${MEMBERSHIP_NATS_SUBJECT:-netvaerke.membership-manager.v1}
+      MEMBERSHIP_NATS_QUEUE_GROUP: ${MEMBERSHIP_NATS_QUEUE_GROUP:-netvaerke.membership-manager.v1}
+      MEMBERSHIP_NATS_TIMEOUT_SECONDS: ${MEMBERSHIP_NATS_TIMEOUT_SECONDS:-5}

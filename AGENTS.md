@@ -18,8 +18,10 @@
 
 ## Runtime and tests
 
-- The application needs PostgreSQL and NATS. Start infrastructure and migrations with `docker compose up -d db nats` followed by `docker compose run --rm liquibase`; then run with `./kotlin run -m membership-manager -- --config businesslogic/membership-manager/config/local.properties`.
-- Container deployment is `docker compose up --build membership-manager`; Compose runs Liquibase before the application.
+- Use rootless Podman for local containers: `podman compose` delegates Compose-file parsing to the installed provider. The provider supports `include`.
+- The application needs PostgreSQL and NATS. Start infrastructure and migrations with `podman compose up -d db nats` followed by `podman compose run --rm liquibase`; then run with `./kotlin run -m membership-manager -- --config businesslogic/membership-manager/config/local.properties`.
+- Containerized membership manager deployment is composed by the web module: `podman compose -f ui/web/docker-compose.yaml up --build membership-manager`. Its base Compose include runs Liquibase before the application.
+- On SELinux-enforcing hosts, bind mounts used by containers must be relabeled: use `:z` when a path is shared by services and `:Z` when it is private to one container. Mount configuration files read-only, for example `./hanko-config.yaml:/etc/hanko/config.yaml:ro,z`.
 - Testcontainers integration tests start real PostgreSQL/NATS containers. Local reuse requires `testcontainers.reuse.enable=true` in `~/.testcontainers.properties`; CI intentionally does not reuse containers.
 - With rootless Podman, start `systemctl --user start podman.socket`, then set `DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/podman/podman.sock"` and `TESTCONTAINERS_RYUK_DISABLED=true` before tests.
 - Configuration files are loaded with `--config <path>`, then environment variables override file values. Required variables are `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`, and `NATS_URL`; optional NATS settings default to the membership subject and a 5-second timeout.

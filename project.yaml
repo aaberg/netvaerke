@@ -4,5 +4,6 @@ modules:
   - access/tenant-access
   - businesslogic/membership-manager
   - businesslogic/network-manager
+  - ui/web
   - utilities/ifx
   - utilities/test-support
