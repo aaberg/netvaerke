@@ -2,6 +2,27 @@ include:
   - ../../docker-compose.yaml
 
 services:
+#  web:
+#    build:
+#      context: ../..
+#      dockerfile: ui/web/Dockerfile
+#    restart: unless-stopped
+#    depends_on:
+#      membership-manager:
+#        condition: service_started
+#      hanko:
+#        condition: service_started
+#    ports:
+#      - "8080:8080"
+#    environment:
+#      NATS_URL: nats://nats:4222
+#      MEMBERSHIP_NATS_SUBJECT: ${MEMBERSHIP_NATS_SUBJECT:-netvaerke.membership-manager.v1}
+#      MEMBERSHIP_NATS_TIMEOUT_SECONDS: ${MEMBERSHIP_NATS_TIMEOUT_SECONDS:-5}
+#      HANKO_API_URL: ${HANKO_API_URL:-http://localhost:8000}
+#      HANKO_VALIDATION_API_URL: http://hanko:8000
+#      HANKO_COOKIE_DOMAIN: ${HANKO_COOKIE_DOMAIN:-}
+#      SECURE_COOKIES: ${SECURE_COOKIES:-false}
+
   membership-manager:
     build:
       context: ../..

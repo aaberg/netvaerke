@@ -9,6 +9,11 @@ email_delivery:
     host: "mailslurper"
     port: "2500"
   from_address: noreply@hanko.io
+cors:
+  allow_origins:
+    - "http://localhost:8000"
+    - "http://localhost:8080"
+    - "http://localhost"
 secrets:
   keys:
     - abcedfghijklmnopqrstuvwxyz
@@ -17,14 +22,10 @@ service:
 webauthn:
   relying_party:
     origins:
+      - "http://localhost:8000"
       - "http://localhost:8080"
       - "http://localhost"
 session:
+  enable_auth_token_header: true
   cookie:
     secure: false # is needed for safari, because safari does not store secure cookies on localhost
-server:
-  public:
-    cors:
-      allow_origins:
-        - "http://localhost:8080"
-        - "http://localhost"

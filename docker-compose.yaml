@@ -60,7 +60,7 @@ services:
       - hanko_data:/var/lib/postgresql/data
 
   hanko-migrate:
-    image: ghcr.io/teamhanko/hanko:latest
+    image: ghcr.io/teamhanko/hanko:v3.0.4
     depends_on:
       postgres_hanko:
         condition: service_healthy
@@ -69,7 +69,7 @@ services:
     command: --config /etc/hanko/config.yaml migrate up
 
   hanko:
-    image: ghcr.io/teamhanko/hanko:latest
+    image: ghcr.io/teamhanko/hanko:v3.0.4
     depends_on:
       hanko-migrate:
         condition: service_completed_successfully

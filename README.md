@@ -1,5 +1,36 @@
 # netvaerke
 
+## Web application
+
+The `web` module is the server-rendered netværke application. It uses Ktor and FreeMarker for HTML pages, HTMX for future partial page updates, Hanko for authentication, and NATS to call the membership manager.
+
+For a complete local stack, including PostgreSQL, NATS, local Hanko, the membership manager, and the web application:
+
+```sh
+podman compose -f ui/web/docker-compose.yaml up --build web
+```
+
+Open [http://localhost:8080](http://localhost:8080). The local Hanko API is available at `http://localhost:8000`.
+
+To run the web application directly on the host, first start the local infrastructure, apply migrations, and start the membership manager:
+
+```sh
+podman compose -f ui/web/docker-compose.yaml up -d db nats postgres_hanko
+podman compose -f ui/web/docker-compose.yaml run --rm liquibase
+podman compose -f ui/web/docker-compose.yaml run --rm hanko-migrate
+podman compose -f ui/web/docker-compose.yaml up -d hanko
+./kotlin run -m membership-manager -- \
+  --config businesslogic/membership-manager/config/local.properties
+```
+
+In a second terminal, run the web application with its tracked local configuration:
+
+```sh
+./kotlin run -m web -- --config ui/web/config/local.properties
+```
+
+The configuration file supplies the local NATS and Hanko URLs. Environment variables override it; in production set `HANKO_API_URL` to the browser-facing Hanko Cloud or custom-domain URL, and `HANKO_VALIDATION_API_URL` to the URL the web server should use to validate sessions.
+
 ## Membership manager application
 
 The membership manager runs as a JVM application. It exposes `MembershipManager` through NATS and calls the local profile and tenant access components through IFX `DirectTransport` bindings.

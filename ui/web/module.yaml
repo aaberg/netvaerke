@@ -4,11 +4,18 @@ dependencies:
   - ../../utilities/ifx
   - ../../businesslogic/membership-manager
   - ../../businesslogic/network-manager
+  - io.ktor:ktor-server-core-jvm:3.3.3
+  - io.ktor:ktor-server-freemarker-jvm:3.3.3
+  - io.ktor:ktor-server-netty-jvm:3.3.3
+  - io.nats:jnats:2.26.0
 
 test-dependencies:
   - ../../utilities/test-support
+  - io.ktor:ktor-server-test-host-jvm:3.3.3
 
 settings:
+  jvm:
+    mainClass: netvaerke.application.web.MainKt
   kotlin:
     version: 2.4.10
     allWarningsAsErrors: true
