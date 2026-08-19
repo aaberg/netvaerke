@@ -73,17 +73,34 @@ class IfxTest {
     }
 
     @Test
-    fun `requires exactly one request object`() {
-        val failure = assertFailsWith<IllegalArgumentException> {
-            Ifx {
-                service<NoRequestService> {
-                    via(DirectTransport)
-                }
+    fun `supports zero and multiple request arguments`() {
+        val ifx = Ifx {
+            service<NoRequestService> {
+                via(DirectTransport)
+            }
+            service<MultipleArgumentService> {
+                via(DirectTransport)
             }
         }
+        ifx.expose<NoRequestService>(object : NoRequestService {
+            override suspend fun greet(): GreetingResponse = GreetingResponse("Hello")
+        })
+        ifx.expose<MultipleArgumentService>(object : MultipleArgumentService {
+            override suspend fun greet(greeting: String, name: String, suffix: String?): GreetingResponse =
+                GreetingResponse("$greeting, $name${suffix.orEmpty()}")
+        })
 
-        assertTrue(failure.message.orEmpty().contains("exactly one request object"))
+        assertEquals(GreetingResponse("Hello"), runSuspend { ifx.create<NoRequestService>().greet() })
+        assertEquals(
+            GreetingResponse("Hello, Lars!"),
+            runSuspend { ifx.create<MultipleArgumentService>().greet("Hello", "Lars", "!") },
+        )
+        assertEquals(
+            GreetingResponse("Hello, Lars"),
+            runSuspend { ifx.create<MultipleArgumentService>().greet("Hello", "Lars", null) },
+        )
     }
+
 }
 
 private data class GreetingRequest(val name: String)
@@ -105,6 +122,10 @@ private interface InvalidService {
 
 private interface NoRequestService {
     suspend fun greet(): GreetingResponse
+}
+
+private interface MultipleArgumentService {
+    suspend fun greet(greeting: String, name: String, suffix: String?): GreetingResponse
 }
 
 private class GreetingException : RuntimeException()

@@ -26,6 +26,9 @@ network manager, authorization engine, IFX transport, and contact persistence.
 - `AuthorizationEngine.authorize` now includes `Operation`, so its policy can
   distinguish reads from mutations.
 - `AuthorizationResponseDto` is serializable.
+- IFX now supports zero, one, or multiple source arguments over Direct and NATS.
+  NATS sends a positional JSON argument envelope and resolves serializers from
+  Kotlin types, including top-level nullable values.
 
 ## Remaining Findings
 
@@ -73,36 +76,36 @@ The NATS operation subject identifies the method. The server uses locally known
 serializers for each position; it must not trust serializers supplied by a
 client.
 
-#### Increment 1: Transport Contract and Codec
+#### Completed: Transport Contract and Codec
 
-1. Relax `ServiceContract` to allow a suspend method with zero or more source
+1. [x] Relax `ServiceContract` to allow a suspend method with zero or more source
    arguments followed by the compiler-generated continuation.
-2. Replace the single request serializer in `MethodCodec` with an ordered list
+2. [x] Replace the single request serializer in `MethodCodec` with an ordered list
    of argument serializers.
-3. Encode all non-continuation client arguments as `JsonElement` values in the
+3. [x] Encode all non-continuation client arguments as `JsonElement` values in the
    request envelope.
-4. Validate the envelope argument count server-side, decode every argument with
+4. [x] Validate the envelope argument count server-side, decode every argument with
    its local serializer, append the continuation, and invoke the service.
-5. Keep reply envelopes unchanged.
-6. Treat this as a wire-protocol change. Deploy NATS clients and servers
+5. [x] Keep reply envelopes unchanged.
+6. [x] Treat this as a wire-protocol change. Deploy NATS clients and servers
    together, or use a versioned subject.
 
-#### Increment 2: Kotlin Type Fidelity
+#### Completed: Kotlin Type Fidelity
 
-1. Resolve argument and return serializers from Kotlin `KType` rather than Java
+1. [x] Resolve argument and return serializers from Kotlin `KType` rather than Java
    reflection `Type`.
-2. Add `kotlin-reflect` to IFX if required by the chosen implementation.
-3. This preserves top-level nullable argument and response types. Fail clearly
+2. [x] Add `kotlin-reflect` to IFX for Kotlin method metadata.
+3. [x] This preserves top-level nullable argument and response types. Fail clearly
    for unsupported Java interfaces, unnamed/unresolved parameters, or types
    without serializers.
 
-#### Increment 3: IFX Tests
+#### Completed: IFX Tests
 
-1. Change the existing no-request validation test from rejection to acceptance.
-2. Add Direct transport tests for zero, one, and multiple arguments.
-3. Add NATS round-trip tests for zero, one, and multiple arguments, nullable
+1. [x] Change the existing no-request validation test from rejection to acceptance.
+2. [x] Add Direct transport tests for zero, one, and multiple arguments.
+3. [x] Add NATS round-trip tests for zero, one, and multiple arguments, nullable
    values, `Unit` responses, and remote exceptions.
-4. Add malformed-envelope tests for an incorrect argument count and invalid
+4. [x] Add malformed-envelope tests for an incorrect argument count and invalid
    argument JSON.
 
 ### Contact Tenant Integrity
@@ -126,9 +129,8 @@ tenant. Tenant ownership must never be updated by the conflict path.
 
 ## Suggested Delivery Order
 
-1. Complete IFX multi-argument transport support and its tests.
-2. Mark `Operation` serializable and finalize its operation vocabulary.
-3. Add authorization and tenant dependencies, then implement and test
+1. Mark `Operation` serializable and finalize its operation vocabulary.
+2. Add authorization and tenant dependencies, then implement and test
    `AuthorizationEngine`.
-4. Implement and test `NetworkManager` authorization, mapping, and detail rules.
-5. Make contact ownership writes atomic and add persistence integration tests.
+3. Implement and test `NetworkManager` authorization, mapping, and detail rules.
+4. Make contact ownership writes atomic and add persistence integration tests.

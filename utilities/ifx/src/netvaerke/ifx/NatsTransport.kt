@@ -11,9 +11,6 @@ import io.opentelemetry.context.propagation.TextMapPropagator
 import io.opentelemetry.context.propagation.TextMapSetter
 import io.opentelemetry.extension.kotlin.asContextElement
 import java.lang.reflect.Method
-import java.lang.reflect.ParameterizedType
-import java.lang.reflect.Type
-import java.lang.reflect.WildcardType
 import java.time.Duration as JavaDuration
 import java.util.concurrent.CompletionException
 import java.util.concurrent.CancellationException
@@ -22,6 +19,9 @@ import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.startCoroutine
+import kotlin.reflect.KParameter
+import kotlin.reflect.KType
+import kotlin.reflect.jvm.kotlinFunction
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineDispatcher
@@ -100,8 +100,8 @@ private class NatsRequestReplyBinding(
             method to MethodCodec(
                 method = method,
                 subject = operationSubject,
-                requestSerializer = serializer(method.genericParameterTypes.first()).asAnySerializer(),
-                responseSerializer = serializer(method.responseType()).asAnySerializer(),
+                argumentSerializers = method.argumentTypes().map { serializer(it).asAnySerializer() },
+                responseSerializer = serializer(method.returnKType()).asAnySerializer(),
             )
         }
     private val codecsBySubject = codecs.values.associateBy(MethodCodec::subject)
@@ -122,8 +122,8 @@ private class NatsRequestReplyBinding(
             "${service.typeName}.${method.name} is not a configured operation"
         }
         val continuation = arguments.last().asContinuation()
-        val requestObject = arguments.first()
-        suspend { invokeRemote(codec, requestObject) }.startCoroutine(continuation)
+        val sourceArguments = arguments.dropLast(1)
+        suspend { invokeRemote(codec, sourceArguments) }.startCoroutine(continuation)
         return COROUTINE_SUSPENDED
     }
 
@@ -156,8 +156,8 @@ private class NatsRequestReplyBinding(
 
         requestScope.launch(extractContext(message).asContextElement()) {
             val result = try {
-                val request = json.decodeFromString(codec.requestSerializer, message.data.decodeToString())
-                Result.success(invokeService(codec, target, request))
+                val request = json.decodeFromString(NatsRequest.serializer(), message.data.decodeToString())
+                Result.success(invokeService(codec, target, codec.decodeArguments(json, request)))
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Throwable) {
@@ -167,8 +167,17 @@ private class NatsRequestReplyBinding(
         }
     }
 
-    private suspend fun invokeRemote(codec: MethodCodec, requestObject: Any?): Any? {
-        val payload = json.encodeToString(codec.requestSerializer, requestObject).encodeToByteArray()
+    private suspend fun invokeRemote(codec: MethodCodec, arguments: List<Any?>): Any? {
+        require(arguments.size == codec.argumentSerializers.size) {
+            "${service.typeName}.${codec.method.name} received ${arguments.size} arguments, " +
+                "expected ${codec.argumentSerializers.size}"
+        }
+        val request = NatsRequest(
+            arguments = arguments.mapIndexed { index, argument ->
+                json.encodeToJsonElement(codec.argumentSerializers[index], argument)
+            },
+        )
+        val payload = json.encodeToString(NatsRequest.serializer(), request).encodeToByteArray()
         return suspendCancellableCoroutine { continuation ->
             val pendingRequest = request(codec.subject, payload)
             continuation.invokeOnCancellation { pendingRequest.cancel(true) }
@@ -183,10 +192,11 @@ private class NatsRequestReplyBinding(
         }
     }
 
-    private suspend fun invokeService(codec: MethodCodec, target: Any, request: Any?): Any? =
+    private suspend fun invokeService(codec: MethodCodec, target: Any, arguments: List<Any?>): Any? =
         suspendCancellableCoroutine { continuation ->
             try {
-                val returned = codec.method.invoke(target, request, continuation)
+                val invocationArguments = arguments.toMutableList().apply { add(continuation) }
+                val returned = codec.method.invoke(target, *invocationArguments.toTypedArray())
                 if (returned !== COROUTINE_SUSPENDED) {
                     continuation.resume(returned)
                 }
@@ -241,8 +251,23 @@ private class NatsRequestReplyBinding(
 private data class MethodCodec(
     val method: Method,
     val subject: String,
-    val requestSerializer: KSerializer<Any?>,
+    val argumentSerializers: List<KSerializer<Any?>>,
     val responseSerializer: KSerializer<Any?>,
+) {
+    fun decodeArguments(json: Json, request: NatsRequest): List<Any?> {
+        require(request.arguments.size == argumentSerializers.size) {
+            "${method.declaringClass.typeName}.${method.name} received ${request.arguments.size} arguments, " +
+                "expected ${argumentSerializers.size}"
+        }
+        return request.arguments.mapIndexed { index, argument ->
+            json.decodeFromJsonElement(argumentSerializers[index], argument)
+        }
+    }
+}
+
+@Serializable
+private data class NatsRequest(
+    val arguments: List<JsonElement>,
 )
 
 @Serializable
@@ -257,14 +282,17 @@ private data class NatsError(
     val message: String?,
 )
 
-private fun Method.responseType(): Type {
-    val continuationType = genericParameterTypes.last() as? ParameterizedType
-        ?: error("$name has no parameterized continuation")
-    val resultType = continuationType.actualTypeArguments.single()
-    return if (resultType is WildcardType) {
-        resultType.lowerBounds.singleOrNull() ?: resultType.upperBounds.single()
-    } else {
-        resultType
+private fun Method.argumentTypes(): List<KType> = kotlinFunctionOrThrow().parameters
+    .filter { it.kind == KParameter.Kind.VALUE }
+    .map(KParameter::type)
+
+private fun Method.returnKType(): KType = kotlinFunctionOrThrow().returnType
+
+private fun Method.kotlinFunctionOrThrow() = requireNotNull(kotlinFunction) {
+    "$declaringClass.$name must be a Kotlin function to use NATS transport"
+}.also { function ->
+    require(function.parameters.none { it.kind == KParameter.Kind.EXTENSION_RECEIVER }) {
+        "$declaringClass.$name cannot be an extension function"
     }
 }
 

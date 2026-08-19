@@ -45,6 +45,74 @@ class NatsTransportTest {
     }
 
     @Test
+    fun `serializes zero and multiple arguments through NATS`() {
+        val subject = natsSubject()
+        val recorded = AtomicReference<String>()
+        NatsTestBroker.openConnection().use { connection ->
+            Ifx {
+                service<NatsArgumentService> {
+                    via(NatsTransport(connection).requestReply(subject))
+                }
+            }.use { ifx ->
+                ifx.expose<NatsArgumentService>(object : NatsArgumentService {
+                    override suspend fun defaultGreeting(): NatsGreetingResponse = NatsGreetingResponse("Hello")
+
+                    override suspend fun greet(
+                        greeting: String,
+                        name: String,
+                        suffix: String?,
+                    ): NatsGreetingResponse = NatsGreetingResponse("$greeting, $name${suffix.orEmpty()}")
+
+                    override suspend fun record(name: String, count: Int) {
+                        recorded.set("$name:$count")
+                    }
+                })
+                ifx.start()
+
+                val service = ifx.create<NatsArgumentService>()
+                assertEquals(NatsGreetingResponse("Hello"), runNatsSuspend { service.defaultGreeting() })
+                assertEquals(
+                    NatsGreetingResponse("Hello, Lars!"),
+                    runNatsSuspend { service.greet("Hello", "Lars", "!") },
+                )
+                assertEquals(
+                    NatsGreetingResponse("Hello, Lars"),
+                    runNatsSuspend { service.greet("Hello", "Lars", null) },
+                )
+                runNatsSuspend { service.record("Lars", 2) }
+                assertEquals("Lars:2", recorded.get())
+            }
+        }
+    }
+
+    @Test
+    fun `rejects malformed argument envelopes`() {
+        val subject = natsSubject()
+        NatsTestBroker.openConnection().use { connection ->
+            Ifx {
+                service<NatsGreetingService> {
+                    via(NatsTransport(connection).requestReply(subject))
+                }
+            }.use { ifx ->
+                ifx.expose<NatsGreetingService>(NatsGreetingServiceImpl())
+                ifx.start()
+
+                val missingArgumentReply = connection.request(
+                    "$subject.greet",
+                    """{"arguments":[]}""".encodeToByteArray(),
+                ).get(10, TimeUnit.SECONDS)
+                assertTrue(missingArgumentReply.data.decodeToString().contains("expected 1"))
+
+                val invalidArgumentReply = connection.request(
+                    "$subject.greet",
+                    """{"arguments":["not a greeting"]}""".encodeToByteArray(),
+                ).get(10, TimeUnit.SECONDS)
+                assertTrue(invalidArgumentReply.data.decodeToString().contains("error"))
+            }
+        }
+    }
+
+    @Test
     fun `maps service failures to remote exceptions`() {
         val subject = natsSubject()
         NatsTestBroker.openConnection().use { connection ->
@@ -161,6 +229,12 @@ private data class NatsGreetingResponse(val message: String)
 
 private interface NatsGreetingService {
     suspend fun greet(request: NatsGreetingRequest): NatsGreetingResponse
+}
+
+private interface NatsArgumentService {
+    suspend fun defaultGreeting(): NatsGreetingResponse
+    suspend fun greet(greeting: String, name: String, suffix: String?): NatsGreetingResponse
+    suspend fun record(name: String, count: Int)
 }
 
 private class NatsGreetingServiceImpl : NatsGreetingService {

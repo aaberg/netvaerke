@@ -35,8 +35,5 @@ internal object ServiceContract {
         ) {
             "${service.typeName}.${method.name} must be a suspend function"
         }
-        require(method.parameterCount == 2) {
-            "${service.typeName}.${method.name} must take exactly one request object"
-        }
     }
 }

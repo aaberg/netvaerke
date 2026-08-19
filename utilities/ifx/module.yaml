@@ -1,6 +1,7 @@
 product: jvm/lib
 
 dependencies:
+  - org.jetbrains.kotlin:kotlin-reflect:2.4.10
   - io.nats:jnats:2.26.0
   - io.opentelemetry:opentelemetry-api:1.63.0
   - io.opentelemetry:opentelemetry-extension-kotlin:1.63.0
