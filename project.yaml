@@ -2,6 +2,7 @@ modules:
   - access/contact-access
   - access/profile-access
   - access/tenant-access
+  - businesslogic/authorization-engine
   - businesslogic/membership-manager
   - businesslogic/network-manager
   - ui/web

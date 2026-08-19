@@ -1,0 +1,18 @@
+product: jvm/lib
+
+dependencies:
+  - ../../utilities/ifx
+  - ../../access/profile-access:
+      exported: true
+  - ../../access/tenant-access:
+      exported: true
+
+test-dependencies:
+  - ../../utilities/test-support
+  - org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2
+
+settings:
+  kotlin:
+    version: 2.4.10
+    allWarningsAsErrors: true
+    serialization: json

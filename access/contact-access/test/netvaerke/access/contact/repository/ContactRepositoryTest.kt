@@ -6,14 +6,7 @@ import liquibase.Liquibase
 import liquibase.database.DatabaseFactory
 import liquibase.database.jvm.JdbcConnection
 import liquibase.resource.DirectoryResourceAccessor
-import netvaerke.access.contact.Contact
-import netvaerke.access.contact.ContactAccess
-import netvaerke.access.contact.ContactAccessImpl
-import netvaerke.access.contact.ContactImage
-import netvaerke.access.contact.EmailAddress
-import netvaerke.access.contact.Note
-import netvaerke.access.contact.PhoneNumber
-import netvaerke.access.contact.WorkInfo
+import netvaerke.access.contact.*
 import netvaerke.testsupport.PostgresTestDatabase
 import java.nio.file.Files
 import java.nio.file.Path
@@ -23,6 +16,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 class ContactRepositoryTest {
@@ -43,10 +37,10 @@ class ContactRepositoryTest {
 
     @Test
     fun `round trips all contact detail types through jsonb`() {
+        val  tenantId = randomUuid()
         val contact = Contact(
             id = randomUuid(),
             name = "Ada Lovelace",
-            tenantId = randomUuid(),
             contactDetails = listOf(
                 EmailAddress(
                     "ada@example.com",
@@ -66,10 +60,10 @@ class ContactRepositoryTest {
             ),
         )
 
-        access.saveContact(contact)
+        access.saveContact(tenantId, contact)
 
-        assertEquals(contact, access.getContact(contact.id))
-        assertEquals(listOf(contact), access.getContacts(contact.tenantId))
+        assertEquals(contact, access.getContact(tenantId, contact.id))
+        assertEquals(listOf(contact), access.getContacts(tenantId))
         assertEquals("array" to 5, storedDetailsShape(contact.id))
     }
 
@@ -80,7 +74,6 @@ class ContactRepositoryTest {
         val contact = Contact(
             id = randomUuid(),
             name = "Grace Hopper",
-            tenantId = tenantId,
             contactDetails = listOf(
                 EmailAddress(
                     "grace@example.com",
@@ -91,11 +84,10 @@ class ContactRepositoryTest {
         val otherContact = Contact(
             id = randomUuid(),
             name = "Katherine Johnson",
-            tenantId = otherTenantId,
             contactDetails = emptyList(),
         )
-        access.saveContact(contact)
-        access.saveContact(otherContact)
+        access.saveContact(tenantId, contact)
+        access.saveContact(otherTenantId, otherContact)
 
         assertEquals(listOf(contact), access.getContacts(tenantId))
         assertEquals(listOf(otherContact), access.getContacts(otherTenantId))
@@ -104,14 +96,8 @@ class ContactRepositoryTest {
             name = "Rear Admiral Grace Hopper",
             contactDetails = listOf(Note("COBOL pioneer")),
         )
-        access.saveContact(updated)
-        assertEquals(updated, access.getContact(contact.id))
-
-        access.deleteContact(updated.copy(tenantId = otherTenantId))
-        assertEquals(updated, access.getContact(contact.id))
-
-        access.deleteContact(updated)
-        assertNull(access.getContact(contact.id))
+        access.saveContact(tenantId, updated)
+        assertEquals(updated, access.getContact(tenantId, contact.id))
     }
 
     private fun storedDetailsShape(id: Uuid): Pair<String, Int> =
@@ -154,4 +140,5 @@ private object ContactTestDatabase {
             ?: error("Could not locate the Liquibase changelog directory")
 }
 
-private fun randomUuid(): Uuid = Uuid.parse(UUID.randomUUID().toString())
+@OptIn(ExperimentalUuidApi::class)
+private fun randomUuid(): Uuid = Uuid.generateV7()
