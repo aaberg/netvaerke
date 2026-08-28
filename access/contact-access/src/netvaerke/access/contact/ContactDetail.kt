@@ -31,6 +31,5 @@ data class WorkInfo(
 
 @Serializable
 data class ContactImage(
-    val fileKey: String,
-    val mimeType: String,
+    val fileKey: String
 ) : ContactDetail()

@@ -14,19 +14,6 @@ class NetworkManagerImpl(
         tenantId: Uuid,
         actorId: Uuid
     ): List<TenantContactListItemDto> {
-        val authResult = authorizer.authorize(actorId, tenantId, Operation.READ_CONTACTS)
-        !authResult.authorized ?: return emptyList()
-
-        val contacts = contactAccess.getContacts(tenantId)
-        return contacts.map { contact ->
-            TenantContactListItemDto(
-                contactId = contact.id,
-                name = contact.name,
-                primaryEmailAddress = ,
-                phone = contact.phone
-            )
-        }
-
         TODO("Not yet implemented")
     }
 

@@ -15,6 +15,19 @@ network manager, authorization engine, IFX transport, and contact persistence.
   layer intentionally remains flexible.
 - NATS access to the NetworkManager subject must be limited to trusted backend
   services. Membership is still checked by `NetworkManager` on each request.
+- `FileStorage` is a generic, non-IFX utility library used directly by the Ktor
+  application. It uploads, deletes, and creates signed Garage URLs, but neither
+  authorizes requests nor applies image policy.
+- Contact-image uploads pass through Ktor. Ktor obtains an authorized,
+  server-generated file key from `NetworkManager`, validates the image, and
+  streams it to Garage through `FileStorage`. It then asks `NetworkManager` to
+  associate the key with the contact.
+- Contact-image downloads remain direct browser-to-Garage requests. Ktor maps a
+  `fileKey` from the trusted `NetworkManager` response to a one-hour signed URL
+  using `FileStorage`; Ktor owns this client-facing URL-expiry policy.
+- A contact persists only its durable image `fileKey`. It never persists a
+  signed URL or MIME type. `NetworkManager` exposes the key only to trusted
+  backend callers; Ktor client-facing DTOs expose only a freshly issued URL.
 
 ## Current Contract Status
 
@@ -34,9 +47,8 @@ network manager, authorization engine, IFX transport, and contact persistence.
 
 ### Authorization Engine
 
-- The current `AuthorizationEngine.authorize(actorId, tenantId, operation)` has
-  multiple arguments. It becomes IFX/NATS-compatible only after IFX supports
-  zero or more service arguments.
+- `AuthorizationEngine.authorize(actorId, tenantId, operation)` is compatible
+  with IFX/NATS multi-argument transport.
 - `Operation` must have `@Serializable` before it is sent as a NATS argument.
 - Define operation semantics explicitly. The current values are `READ_CONTACTS`
   and `UPDATE_CONTACTS`; decide whether create and delete are included in
@@ -47,7 +59,7 @@ network manager, authorization engine, IFX transport, and contact persistence.
 
 ### Network Manager
 
-- Add `tenant-access` and `authorization-engine` dependencies to the module.
+- Add the missing `tenant-access` dependency to the module.
 - Implement the manager so every method first calls `AuthorizationEngine`, then
   calls the tenant-scoped `ContactAccess` operation.
 - Normalize an unauthorized or cross-tenant contact lookup to the same
@@ -59,12 +71,40 @@ network manager, authorization engine, IFX transport, and contact persistence.
   - a deterministic handling of malformed lower-layer data with duplicate
     singleton details
 
+### Contact Images
+
+- Remove `mimeType` from `ContactImage`; its only persisted storage reference is
+  `fileKey`. Do not accept a `ContactImage` in contact create/update DTOs, as a
+  browser must not select a durable storage key.
+- Add a generic `FileStorage` utility module and make it available to Ktor. It
+  provides suspending streaming `putFile` and `deleteFile` operations, plus
+  signed GET URL generation. It receives a bucket, file key, accepted content
+  type where relevant, and file content; it must not depend on IFX or Ktor.
+- Add an IFX/NATS-safe manager operation that authorizes an image update and
+  returns a unique tenant/contact-scoped `fileKey`. Ktor must obtain this key
+  before reading the upload body. The operation contains no file bytes.
+- Ktor enforces a maximum byte size while streaming and validates allowed image
+  formats and dimensions from the actual bytes before calling `FileStorage`.
+  JPEG, PNG, and WebP are the initial candidate allowlist; SVG is excluded
+  unless explicitly required.
+- Ktor stores the validated image with its accepted HTTP `Content-Type`, so
+  Garage returns the correct type on the signed download URL. This upload
+  metadata is not part of the contact domain model.
+- After a successful Garage write, Ktor calls `NetworkManager` to associate the
+  generated `fileKey` with the contact. That operation reauthorizes the update.
+  If it fails, Ktor deletes the newly stored object. Replacing or deleting a
+  contact image requires deletion of the former object after the contact update;
+  failed deletion requires a retry or cleanup job.
+- `NetworkManager` response DTOs used over NATS carry `fileKey` for trusted
+  backend callers. Ktor maps it to a one-hour signed URL using `FileStorage` in
+  its client-facing DTO. Never return the storage key or persist/log the signed
+  URL outside the trusted backend boundary.
+
 ### IFX Multi-Argument Support
 
-IFX currently requires exactly one source argument because `NatsTransport`
-serializes only the first method argument. The proxy, tracing, and direct
-transport already pass the complete argument array, so the NATS codec and
-service validation are the primary changes.
+IFX supports zero or more source arguments. NATS serializes them in a positional
+JSON envelope; the proxy, tracing, and direct transport pass the complete
+argument array.
 
 Use a positional request envelope:
 
@@ -132,5 +172,14 @@ tenant. Tenant ownership must never be updated by the conflict path.
 1. Mark `Operation` serializable and finalize its operation vocabulary.
 2. Add authorization and tenant dependencies, then implement and test
    `AuthorizationEngine`.
-3. Implement and test `NetworkManager` authorization, mapping, and detail rules.
-4. Make contact ownership writes atomic and add persistence integration tests.
+3. Make contact ownership writes atomic and add persistence integration tests.
+4. Change the contact-image persistence and DTO contracts to retain only a
+   server-generated `fileKey`; add the NATS-safe image-key authorization and
+   association operations.
+5. Add and test the generic `FileStorage` utility for Garage streaming writes,
+   deletes, and signed GET URLs.
+6. Implement and test the Ktor image-upload endpoint, including authorization
+   calls, byte and image validation, Garage cleanup, and no byte transfer over
+   NATS.
+7. Implement and test `NetworkManager` authorization, mapping, and detail
+   rules; implement Ktor mapping from trusted file keys to signed image URLs.
