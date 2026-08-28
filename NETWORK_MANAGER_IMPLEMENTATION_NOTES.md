@@ -38,9 +38,9 @@ network manager, authorization engine, IFX transport, and contact persistence.
   multiple arguments. It becomes IFX/NATS-compatible only after IFX supports
   zero or more service arguments.
 - `Operation` must have `@Serializable` before it is sent as a NATS argument.
-- Define operation semantics explicitly. The current values are `ReadContacts`
-  and `UpdateContacts`; decide whether create and delete are included in
-  `UpdateContacts` or should have distinct operations.
+- Define operation semantics explicitly. The current values are `READ_CONTACTS`
+  and `UPDATE_CONTACTS`; decide whether create and delete are included in
+  `UPDATE_CONTACTS` or should have distinct operations.
 - The authorization implementation must query current membership via
   `TenantAccess` and apply the chosen OWNER/MEMBER policy. A denied request must
   not call `ContactAccess`.
@@ -55,7 +55,7 @@ network manager, authorization engine, IFX transport, and contact persistence.
 - Define and test the detail policy:
   - zero or one `WorkInfo`, `Note`, and `ContactImage`
   - zero or one primary `EmailAddress`
-  - `mainEmailAddress` is derived from the primary email
+  - `primaryEmailAddress` is derived from the primary email
   - a deterministic handling of malformed lower-layer data with duplicate
     singleton details
 

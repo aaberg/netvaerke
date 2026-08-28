@@ -88,6 +88,25 @@ services:
     networks:
       - default
 
+  ## Garage
+  garage:
+    image: dxflrs/garage:v2.3.0
+    container_name: garage
+    restart: unless-stopped
+    ports:
+      - "3900:3900" # S3 API
+      - "3903:3903" # Admin / Metrics
+    environment:
+      - GARAGE_DEFAULT_ACCESS_KEY=GK698c7adae13cc6e850406633
+      - GARAGE_DEFAULT_SECRET_KEY=a3ce92455d1cd0883a6832b5e1d4e23be4c639aa8979a415968989144094fbc9
+      - GARAGE_DEFAULT_BUCKET=my-bucket
+    command: [ "/garage", "server", "--single-node", "--default-bucket" ]
+    volumes:
+      # Note the :ro,Z and :Z flags below
+      - ./garage.toml:/etc/garage.toml:ro,Z
+      - garage-meta:/var/lib/garage/meta:Z
+      - garage-data:/var/lib/garage/data:Z
+
 networks:
   default:
     name: netvaerke
@@ -95,3 +114,5 @@ networks:
 volumes:
   db_data:
   hanko_data:
+  garage-meta:
+  garage-data:

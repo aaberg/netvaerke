@@ -1,0 +1,26 @@
+# Metadata storage
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+
+# Replication factor (1 for single node)
+replication_factor = 1
+
+# Node-to-node cluster communication secret (32-byte hex string)
+# Generate via `openssl rand -hex 32`
+rpc_secret = "32c289ab22a3f5330d5be840c6a0ea3623d73078682612fc325f29dfe938a11b"
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+
+# S3 API endpoint configuration
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.localhost"
+
+# Optional: Web Administration & Prometheus Metrics endpoint
+[admin]
+api_bind_addr = "[::]:3903"
+admin_token = "4f63923688778dd582102863397f1388cc8730bd7af79a9198f97f224f55b818"
+metrics_token = "2d9d1bf0940ce1df5b2789bb52582e5c168400773aed9223081195dd17e15dac"

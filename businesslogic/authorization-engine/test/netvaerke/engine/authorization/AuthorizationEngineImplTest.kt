@@ -53,19 +53,19 @@ class AuthorizationEngineImplTest {
         )
         val engine = AuthorizationEngineImpl(tenantAccess)
 
-        assertFalse(engine.authorize(actorId, tenantId, Operation.ReadContacts).authorized)
+        assertFalse(engine.authorize(actorId, tenantId, Operation.READ_CONTACTS).authorized)
 
         tenantAccess.memberships.clear()
 
-        assertFalse(engine.authorize(actorId, tenantId, Operation.UpdateContacts).authorized)
+        assertFalse(engine.authorize(actorId, tenantId, Operation.UPDATE_CONTACTS).authorized)
 
         tenantAccess.memberships += TenantMember(actorId, tenantId, TenantMemberRole.MEMBER)
 
-        assertTrue(engine.authorize(actorId, tenantId, Operation.ReadContacts).authorized)
+        assertTrue(engine.authorize(actorId, tenantId, Operation.READ_CONTACTS).authorized)
 
         tenantAccess.memberships.clear()
 
-        assertFalse(engine.authorize(actorId, tenantId, Operation.UpdateContacts).authorized)
+        assertFalse(engine.authorize(actorId, tenantId, Operation.UPDATE_CONTACTS).authorized)
         assertEquals(listOf(actorId, actorId, actorId, actorId), tenantAccess.requestedUserIds)
     }
 }

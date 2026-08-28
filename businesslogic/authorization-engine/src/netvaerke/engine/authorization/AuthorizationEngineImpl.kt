@@ -22,8 +22,8 @@ class AuthorizationEngineImpl(
         }
 
         val authorized = when (operation) {
-            Operation.ReadContacts,
-            Operation.UpdateContacts,
+            Operation.READ_CONTACTS,
+            Operation.UPDATE_CONTACTS,
             -> isTenantMember
         }
         return AuthorizationResponseDto(authorized)

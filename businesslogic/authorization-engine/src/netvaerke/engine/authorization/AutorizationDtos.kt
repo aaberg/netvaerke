@@ -1,7 +1,6 @@
 package netvaerke.engine.authorization
 
 import kotlinx.serialization.Serializable
-import kotlin.uuid.Uuid
 
 @Serializable
 data class AuthorizationResponseDto(
@@ -10,6 +9,6 @@ data class AuthorizationResponseDto(
 
 @Serializable
 enum class Operation {
-    ReadContacts,
-    UpdateContacts,
+    READ_CONTACTS,
+    UPDATE_CONTACTS,
 }

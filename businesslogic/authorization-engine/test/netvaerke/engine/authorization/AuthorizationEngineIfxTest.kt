@@ -56,9 +56,9 @@ class AuthorizationEngineIfxTest {
         val tenantId = randomUuid()
         val actorId = tenantId
 
-        assertTrue(engine.authorize(actorId, tenantId, Operation.ReadContacts).authorized)
-        assertTrue(engine.authorize(actorId, tenantId, Operation.UpdateContacts).authorized)
-        assertFalse(engine.authorize(randomUuid(), tenantId, Operation.ReadContacts).authorized)
+        assertTrue(engine.authorize(actorId, tenantId, Operation.READ_CONTACTS).authorized)
+        assertTrue(engine.authorize(actorId, tenantId, Operation.UPDATE_CONTACTS).authorized)
+        assertFalse(engine.authorize(randomUuid(), tenantId, Operation.READ_CONTACTS).authorized)
     }
 }
 

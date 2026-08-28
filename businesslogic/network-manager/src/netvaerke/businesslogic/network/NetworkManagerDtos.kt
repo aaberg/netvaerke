@@ -12,7 +12,7 @@ import kotlin.uuid.Uuid
 data class TenantContactListItemDto(
     val contactId: Uuid,
     val name: String,
-    val mainEmailAddress: String?,
+    val primaryEmailAddress: String?,
     val image: ContactImage?
 )
 
