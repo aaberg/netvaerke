@@ -13,7 +13,7 @@ data class TenantContactListItemDto(
     val contactId: Uuid,
     val name: String,
     val primaryEmailAddress: String?,
-    val image: ContactImageDto?
+    val image: ContactImage?
 )
 
 @Serializable
@@ -24,7 +24,7 @@ data class TenantContactDto(
     val phoneNumbers: List<PhoneNumber>,
     val workInfo: WorkInfo?,
     val note: Note?,
-    val image: ContactImageDto?
+    val image: ContactImage?
 )
 
 @Serializable
@@ -45,9 +45,4 @@ data class UpdateContactDto(
     val workInfo: WorkInfo?,
     val note: Note?,
     val image: ContactImage?
-)
-
-@Serializable
-data class ContactImageDto(
-    val url: String
 )
