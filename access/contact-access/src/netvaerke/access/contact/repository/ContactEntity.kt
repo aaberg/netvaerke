@@ -48,5 +48,4 @@ data class WorkInfoEntity(
 @SerialName("contactImage")
 data class ContactImageEntity(
     val fileKey: String,
-    val mimeType: String,
 ) : ContactDetailEntity()

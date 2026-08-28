@@ -61,7 +61,7 @@ class ContactAccessImpl(
         is PhoneNumber -> PhoneNumberEntity(value, label)
         is Note -> NoteEntity(value)
         is WorkInfo -> WorkInfoEntity(title, organization)
-        is ContactImage -> ContactImageEntity(fileKey, mimeType)
+        is ContactImage -> ContactImageEntity(fileKey)
     }
 
     private fun ContactDetailEntity.toContactDetail(): ContactDetail = when (this) {
@@ -69,6 +69,6 @@ class ContactAccessImpl(
         is PhoneNumberEntity -> PhoneNumber(value, label)
         is NoteEntity -> Note(value)
         is WorkInfoEntity -> WorkInfo(title, organization)
-        is ContactImageEntity -> ContactImage(fileKey, mimeType)
+        is ContactImageEntity -> ContactImage(fileKey)
     }
 }

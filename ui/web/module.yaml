@@ -8,6 +8,8 @@ dependencies:
   - io.ktor:ktor-server-freemarker-jvm:3.3.3
   - io.ktor:ktor-server-netty-jvm:3.3.3
   - io.nats:jnats:2.26.0
+  - software.amazon.awssdk:s3:2.32.11
+  - software.amazon.awssdk:url-connection-client:2.32.11
 
 test-dependencies:
   - ../../utilities/test-support

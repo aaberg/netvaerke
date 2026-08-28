@@ -55,7 +55,6 @@ class ContactRepositoryTest {
                 ),
                 ContactImage(
                     fileKey = "contacts/ada.png",
-                    mimeType = "image/png"
                 ),
             ),
         )
