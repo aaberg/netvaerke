@@ -5,6 +5,7 @@ modules:
   - businesslogic/authorization-engine
   - businesslogic/membership-manager
   - businesslogic/network-manager
+  - businesslogic/network-manager-application
   - ui/web
   - utilities/ifx
   - utilities/test-support

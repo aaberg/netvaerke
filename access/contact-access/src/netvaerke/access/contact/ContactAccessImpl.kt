@@ -1,5 +1,8 @@
 package netvaerke.access.contact
 
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import netvaerke.access.contact.repository.ContactDetailEntity
 import netvaerke.access.contact.repository.ContactEntity
 import netvaerke.access.contact.repository.ContactImageEntity
@@ -12,35 +15,27 @@ import kotlin.uuid.Uuid
 
 class ContactAccessImpl(
     private val repository: ContactRepository,
+    private val jdbcDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ContactAccess {
-    override fun saveContact(tenantId: Uuid, contact: Contact) {
-        val existingContactEntity = repository.getContact(contact.id)
-
-        if (existingContactEntity != null && existingContactEntity.tenantId != tenantId) {
-            throw IllegalArgumentException("Error updating contact. Contact is not part of tenant with id: $tenantId")
+    override suspend fun saveContact(tenantId: Uuid, contact: Contact): Boolean =
+        withContext(jdbcDispatcher) {
+            repository.saveContact(contact.toEntity(tenantId))
         }
 
-        repository.saveContact(contact.toEntity(tenantId))
-    }
+    override suspend fun deleteContact(tenantId: Uuid, contactId: Uuid): Boolean =
+        withContext(jdbcDispatcher) {
+            repository.deleteContact(tenantId, contactId)
+        }
 
-    override fun deleteContact(tenantId: Uuid, contact: Contact) {
-        val existingContact = getContact(tenantId, contact.id)
-            ?: throw IllegalArgumentException("Error deleting contact. Contact not found on tenant: $tenantId")
+    override suspend fun getContact(tenantId: Uuid, id: Uuid): Contact? =
+        withContext(jdbcDispatcher) {
+            repository.getContact(tenantId, id)
+        }?.toContact()
 
-        repository.deleteContact(contact.toEntity(tenantId))
-    }
-
-    override fun getContact(tenantId: Uuid, id: Uuid): Contact? {
-        val contactEntity = repository.getContact(id) ?: return null
-
-        if (contactEntity.tenantId != tenantId) return null
-
-        return contactEntity.toContact()
-    }
-
-
-    override fun getContacts(tenantId: Uuid): List<Contact> =
-        repository.getContacts(tenantId).map { it.toContact() }
+    override suspend fun getContacts(tenantId: Uuid): List<Contact> =
+        withContext(jdbcDispatcher) {
+            repository.getContacts(tenantId)
+        }.map { it.toContact() }
 
     private fun Contact.toEntity(tenantId: Uuid): ContactEntity = ContactEntity(
         id = id,

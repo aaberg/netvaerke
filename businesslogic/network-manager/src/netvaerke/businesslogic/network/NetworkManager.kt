@@ -14,4 +14,13 @@ interface NetworkManager {
 
     suspend fun deleteContact(tenantId: Uuid, actorId: Uuid, contactId: Uuid)
 
+    suspend fun reserveContactImageUpload(tenantId: Uuid, actorId: Uuid, contactId: Uuid): ContactImageUploadDto
+
+    suspend fun setContactImage(
+        tenantId: Uuid,
+        actorId: Uuid,
+        contactId: Uuid,
+        fileKey: String?,
+    ): ContactImageUpdateDto
+
 }

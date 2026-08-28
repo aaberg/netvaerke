@@ -15,9 +15,11 @@ import javax.sql.DataSource
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.runBlocking
 
 class ContactRepositoryTest {
     private val dataSource: DataSource
@@ -36,7 +38,7 @@ class ContactRepositoryTest {
     }
 
     @Test
-    fun `round trips all contact detail types through jsonb`() {
+    fun `round trips all contact detail types through jsonb`() = runBlocking {
         val  tenantId = randomUuid()
         val contact = Contact(
             id = randomUuid(),
@@ -67,7 +69,7 @@ class ContactRepositoryTest {
     }
 
     @Test
-    fun `updates filters and deletes contacts`() {
+    fun `updates filters and deletes contacts`() = runBlocking {
         val tenantId = randomUuid()
         val otherTenantId = randomUuid()
         val contact = Contact(
@@ -97,6 +99,21 @@ class ContactRepositoryTest {
         )
         access.saveContact(tenantId, updated)
         assertEquals(updated, access.getContact(tenantId, contact.id))
+    }
+
+    @Test
+    fun `does not move or delete a contact from another tenant`() = runBlocking {
+        val tenantId = randomUuid()
+        val otherTenantId = randomUuid()
+        val contact = Contact(randomUuid(), "Ada Lovelace", emptyList())
+        access.saveContact(tenantId, contact)
+
+        assertFalse(access.saveContact(otherTenantId, contact.copy(name = "Impostor Ada")))
+        assertEquals(contact, access.getContact(tenantId, contact.id))
+        assertNull(access.getContact(otherTenantId, contact.id))
+
+        assertFalse(access.deleteContact(otherTenantId, contact.id))
+        assertEquals(contact, access.getContact(tenantId, contact.id))
     }
 
     private fun storedDetailsShape(id: Uuid): Pair<String, Int> =

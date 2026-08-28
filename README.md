@@ -4,7 +4,7 @@
 
 The `web` module is the server-rendered netværke application. It uses Ktor and FreeMarker for HTML pages, HTMX for future partial page updates, Hanko for authentication, and NATS to call the membership manager.
 
-For a complete local stack, including PostgreSQL, NATS, local Hanko, the membership manager, and the web application:
+For a complete local stack, including PostgreSQL, NATS, local Hanko, the membership manager, the network manager, and the web application:
 
 ```sh
 podman compose -f ui/web/docker-compose.yaml up --build web
@@ -12,18 +12,28 @@ podman compose -f ui/web/docker-compose.yaml up --build web
 
 Open [http://localhost:8080](http://localhost:8080). The local Hanko API is available at `http://localhost:8000`.
 
-To run the web application directly on the host, first start the local infrastructure, apply migrations, and start the membership manager:
+To run the web application directly on the host, first start the local infrastructure and apply migrations:
 
 ```sh
 podman compose -f ui/web/docker-compose.yaml up -d db nats postgres_hanko
 podman compose -f ui/web/docker-compose.yaml run --rm liquibase
 podman compose -f ui/web/docker-compose.yaml run --rm hanko-migrate
 podman compose -f ui/web/docker-compose.yaml up -d hanko
+```
+
+Then start each backend manager in a separate terminal:
+
+```sh
 ./kotlin run -m membership-manager -- \
   --config businesslogic/membership-manager/config/local.properties
 ```
 
-In a second terminal, run the web application with its tracked local configuration:
+```sh
+./kotlin run -m network-manager-application -- \
+  --config businesslogic/network-manager-application/config/local.properties
+```
+
+In a third terminal, run the web application with its tracked local configuration:
 
 ```sh
 ./kotlin run -m web -- --config ui/web/config/local.properties
@@ -68,6 +78,18 @@ To build the executable JAR directly:
 
 ```sh
 ./kotlin package -m membership-manager -f executable-jar
+```
+
+## Network manager application
+
+The network manager exposes tenant-authorized contact operations through NATS. It binds contact and tenant access locally through IFX `DirectTransport`, then uses the authorization engine to validate the actor's current tenant membership before each operation.
+
+Its default NATS operation subject is `netvaerke.network-manager.v1`. Configure it with `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`, and `NATS_URL`; `NETWORK_MANAGER_NATS_SUBJECT`, `NETWORK_MANAGER_NATS_QUEUE_GROUP`, and `NETWORK_MANAGER_NATS_TIMEOUT_SECONDS` are optional.
+
+To build the executable JAR directly:
+
+```sh
+./kotlin package -m network-manager-application -f executable-jar
 ```
 
 ## NATS integration tests

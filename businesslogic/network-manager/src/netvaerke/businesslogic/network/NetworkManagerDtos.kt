@@ -34,7 +34,6 @@ data class CreateNewContactDto(
     val phoneNumbers: List<PhoneNumber>,
     val workInfo: WorkInfo?,
     val note: Note?,
-    val image: ContactImage?
 )
 
 @Serializable
@@ -44,5 +43,14 @@ data class UpdateContactDto(
     val phoneNumbers: List<PhoneNumber>,
     val workInfo: WorkInfo?,
     val note: Note?,
-    val image: ContactImage?
+)
+
+@Serializable
+data class ContactImageUploadDto(
+    val fileKey: String,
+)
+
+@Serializable
+data class ContactImageUpdateDto(
+    val previousFileKey: String?,
 )

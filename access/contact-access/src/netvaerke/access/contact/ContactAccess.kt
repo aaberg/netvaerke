@@ -4,8 +4,8 @@ import kotlin.uuid.Uuid
 
 interface ContactAccess {
 
-    fun saveContact(tenantId: Uuid, contact: Contact)
-    fun deleteContact(tenantId: Uuid, contact: Contact)
-    fun getContact(tenantId: Uuid, id: Uuid): Contact?
-    fun getContacts(tenantId: Uuid): List<Contact>
+    suspend fun saveContact(tenantId: Uuid, contact: Contact): Boolean
+    suspend fun deleteContact(tenantId: Uuid, contactId: Uuid): Boolean
+    suspend fun getContact(tenantId: Uuid, id: Uuid): Contact?
+    suspend fun getContacts(tenantId: Uuid): List<Contact>
 }

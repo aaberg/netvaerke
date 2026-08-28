@@ -14,32 +14,33 @@ class ContactRepository(
         ignoreUnknownKeys = true
     },
 ) {
-    fun saveContact(contact: ContactEntity) {
+    fun saveContact(contact: ContactEntity): Boolean {
         dataSource.connection.use { connection ->
             connection.prepareStatement(SAVE_CONTACT).use { statement ->
                 statement.setObject(1, contact.id.toJavaUuid())
                 statement.setString(2, contact.name)
                 statement.setObject(3, contact.tenantId.toJavaUuid())
                 statement.setString(4, json.encodeToString(contact.details))
-                statement.executeUpdate()
+                return statement.executeUpdate() == 1
             }
         }
     }
 
-    fun deleteContact(contact: ContactEntity) {
+    fun deleteContact(tenantId: Uuid, contactId: Uuid): Boolean {
         dataSource.connection.use { connection ->
             connection.prepareStatement(DELETE_CONTACT).use { statement ->
-                statement.setObject(1, contact.id.toJavaUuid())
-                statement.setObject(2, contact.tenantId.toJavaUuid())
-                statement.executeUpdate()
+                statement.setObject(1, contactId.toJavaUuid())
+                statement.setObject(2, tenantId.toJavaUuid())
+                return statement.executeUpdate() == 1
             }
         }
     }
 
-    fun getContact(id: Uuid): ContactEntity? =
+    fun getContact(tenantId: Uuid, id: Uuid): ContactEntity? =
         dataSource.connection.use { connection ->
             connection.prepareStatement(GET_CONTACT).use { statement ->
                 statement.setObject(1, id.toJavaUuid())
+                statement.setObject(2, tenantId.toJavaUuid())
                 statement.executeQuery().use { result ->
                     if (result.next()) result.toContactEntity() else null
                 }
@@ -76,8 +77,8 @@ class ContactRepository(
             VALUES (?, ?, ?, ?::jsonb)
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
-                tenant = EXCLUDED.tenant,
                 details = EXCLUDED.details
+            WHERE contact.contact.tenant = EXCLUDED.tenant
         """
 
         const val DELETE_CONTACT = """
@@ -88,7 +89,7 @@ class ContactRepository(
         const val GET_CONTACT = """
             SELECT id, name, tenant, details, created_at
             FROM contact.contact
-            WHERE id = ?
+            WHERE id = ? AND tenant = ?
         """
 
         const val GET_CONTACTS = """
