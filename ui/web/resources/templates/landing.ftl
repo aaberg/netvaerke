@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="netværke helps you build more thoughtful professional and personal relationships.">
     <title>netværke · relationships, with intention</title>
+    <script src="/assets/theme.js"></script>
     <link rel="stylesheet" href="/assets/site.css">
 </head>
 <body class="landing-page">
@@ -16,6 +17,10 @@
             <span>netværke</span>
         </a>
         <nav class="site-actions" aria-label="Account">
+            <button class="button button-quiet theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false" title="Switch to dark mode">
+                <span class="theme-icon theme-moon" aria-hidden="true"></span>
+                <span class="theme-icon theme-sun" aria-hidden="true"></span>
+            </button>
             <a class="button button-quiet" href="/sign-in">Sign in</a>
             <a class="button button-primary" href="/sign-up">Sign up</a>
         </nav>

@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Set up your profile · netværke</title>
+    <script src="/assets/theme.js"></script>
     <link rel="stylesheet" href="/assets/site.css">
 </head>
 <body class="account-page">
@@ -14,6 +15,10 @@
             </svg>
             <span>netværke</span>
         </a>
+        <button class="button button-quiet theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false" title="Switch to dark mode">
+            <span class="theme-icon theme-moon" aria-hidden="true"></span>
+            <span class="theme-icon theme-sun" aria-hidden="true"></span>
+        </button>
     </header>
 
     <main class="account-main">

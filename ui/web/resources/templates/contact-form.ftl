@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${title?html} · netværke</title>
+    <script src="/assets/theme.js"></script>
     <link rel="stylesheet" href="/assets/site.css">
 </head>
 <body class="dashboard-page" data-hanko-api-url="${hankoApiUrl?html}" data-hanko-cookie-domain="<#if hankoCookieDomain??>${hankoCookieDomain?html}</#if>" data-hanko-logout>
@@ -16,6 +17,10 @@
         </a>
         <div class="account-summary">
             <a class="button button-quiet" href="/dashboard">Contacts</a>
+            <button class="button button-quiet theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false" title="Switch to dark mode">
+                <span class="theme-icon theme-moon" aria-hidden="true"></span>
+                <span class="theme-icon theme-sun" aria-hidden="true"></span>
+            </button>
             <button id="logout" class="button button-quiet" type="button">Sign out</button>
         </div>
     </header>

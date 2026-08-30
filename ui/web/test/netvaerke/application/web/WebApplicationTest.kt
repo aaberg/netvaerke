@@ -50,7 +50,10 @@ class WebApplicationTest {
         val response = client.get("/")
 
         assertEquals(HttpStatusCode.OK, response.status)
-        assertTrue(response.bodyAsText().contains("Make room for the people who matter."))
+        val body = response.bodyAsText()
+        assertTrue(body.contains("Make room for the people who matter."))
+        assertTrue(body.contains("data-theme-toggle"))
+        assertTrue(body.contains("/assets/theme.js"))
     }
 
     @Test

@@ -1,6 +1,8 @@
 :root {
     --canvas: #f6f8fa;
     --surface: #ffffff;
+    --surface-subtle: #fbfcfd;
+    --surface-hover: #f3f4f6;
     --ink: #1f2328;
     --muted: #59636e;
     --border: #d0d7de;
@@ -9,9 +11,62 @@
     --accent-hover: #1a7f37;
     --blue: #0969da;
     --danger: #cf222e;
+    --danger-surface: #ffebe9;
+    --danger-ink: #82071e;
+    --avatar-border: #b6d7c0;
+    --avatar-surface: #eaf7ee;
+    --avatar-ink: #1a6d34;
+    --card-shadow: rgba(140, 149, 159, 0.16);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     color: var(--ink);
     background: var(--canvas);
+    color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+    --canvas: #0d1117;
+    --surface: #161b22;
+    --surface-subtle: #1c2128;
+    --surface-hover: #21262d;
+    --ink: #e6edf3;
+    --muted: #8b949e;
+    --border: #30363d;
+    --border-subtle: #21262d;
+    --accent: #2ea043;
+    --accent-hover: #3fb950;
+    --blue: #58a6ff;
+    --danger: #ff7b72;
+    --danger-surface: #3d0f16;
+    --danger-ink: #ffb4ab;
+    --avatar-border: #2d6a4f;
+    --avatar-surface: #123324;
+    --avatar-ink: #7ee787;
+    --card-shadow: rgba(0, 0, 0, 0.3);
+    color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+        --canvas: #0d1117;
+        --surface: #161b22;
+        --surface-subtle: #1c2128;
+        --surface-hover: #21262d;
+        --ink: #e6edf3;
+        --muted: #8b949e;
+        --border: #30363d;
+        --border-subtle: #21262d;
+        --accent: #2ea043;
+        --accent-hover: #3fb950;
+        --blue: #58a6ff;
+        --danger: #ff7b72;
+        --danger-surface: #3d0f16;
+        --danger-ink: #ffb4ab;
+        --avatar-border: #2d6a4f;
+        --avatar-surface: #123324;
+        --avatar-ink: #7ee787;
+        --card-shadow: rgba(0, 0, 0, 0.3);
+        color-scheme: dark;
+    }
 }
 
 * { box-sizing: border-box; }
@@ -76,7 +131,7 @@ body {
     text-decoration: none;
 }
 
-.button:hover { background: #f3f4f6; }
+.button:hover { background: var(--surface-hover); }
 .button:focus-visible,
 .text-link:focus-visible,
 input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
@@ -92,6 +147,19 @@ input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .button-full { width: 100%; margin-top: 20px; min-height: 38px; }
 .button-quiet { border-color: transparent; box-shadow: none; }
 .button-quiet:hover { border-color: var(--border); }
+.theme-toggle { width: 32px; padding: 5px; }
+.theme-icon { width: 18px; height: 18px; background: currentColor; }
+.theme-moon { mask: url("/assets/icons/moon.svg") center / contain no-repeat; }
+.theme-sun { mask: url("/assets/icons/sun.svg") center / contain no-repeat; }
+.theme-sun { display: none; }
+
+:root[data-theme="dark"] .theme-moon { display: none; }
+:root[data-theme="dark"] .theme-sun { display: block; }
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) .theme-moon { display: none; }
+    :root:not([data-theme]) .theme-sun { display: block; }
+}
 
 .landing-page { display: flex; flex-direction: column; }
 
@@ -153,7 +221,7 @@ h1, h2, p { margin-top: 0; }
 
 .account-page {
     background:
-        linear-gradient(180deg, #fff 0, #fff 64px, transparent 64px),
+        linear-gradient(180deg, var(--surface) 0, var(--surface) 64px, transparent 64px),
         var(--canvas);
 }
 
@@ -171,7 +239,7 @@ h1, h2, p { margin-top: 0; }
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--surface);
-    box-shadow: 0 8px 24px rgba(140, 149, 159, 0.16);
+    box-shadow: 0 8px 24px var(--card-shadow);
 }
 
 hanko-auth {
@@ -212,8 +280,8 @@ hanko-auth::part(primary-button) { font-weight: 600; }
     padding: 10px 12px;
     border: 1px solid rgba(207, 34, 46, 0.4);
     border-radius: 6px;
-    background: #ffebe9;
-    color: #82071e;
+    background: var(--danger-surface);
+    color: var(--danger-ink);
     font-size: 14px;
     line-height: 1.4;
 }
@@ -230,7 +298,7 @@ hanko-auth::part(primary-button) { font-weight: 600; }
     padding: 48px;
     border: 1px dashed var(--border);
     border-radius: 8px;
-    background: #fbfcfd;
+    background: var(--surface-subtle);
 }
 .empty-state-icon { width: 34px; height: 34px; display: grid; place-items: center; margin-bottom: 22px; border: 1px solid var(--border); border-radius: 50%; color: var(--accent); font-size: 24px; }
 .empty-state h2 { margin-bottom: 10px; font-size: 22px; letter-spacing: -0.02em; }
@@ -240,8 +308,8 @@ hanko-auth::part(primary-button) { font-weight: 600; }
 .contact-list { overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
 .contact-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 15px 18px; color: var(--ink); text-decoration: none; }
 .contact-row + .contact-row { border-top: 1px solid var(--border-subtle); }
-.contact-row:hover { background: #f6f8fa; }
-.contact-avatar { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid #b6d7c0; border-radius: 50%; background: #eaf7ee; color: #1a6d34; font-size: 15px; font-weight: 700; }
+.contact-row:hover { background: var(--surface-hover); }
+.contact-avatar { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--avatar-border); border-radius: 50%; background: var(--avatar-surface); color: var(--avatar-ink); font-size: 15px; font-weight: 700; }
 .contact-photo { object-fit: cover; background: var(--canvas); }
 .contact-summary { display: grid; gap: 3px; min-width: 0; }
 .contact-summary strong, .contact-summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -255,7 +323,7 @@ hanko-auth::part(primary-button) { font-weight: 600; }
 .contact-form-intro { margin-bottom: 30px; }
 .contact-form-intro h1 { margin-bottom: 10px; font-size: clamp(32px, 5vw, 44px); letter-spacing: -0.04em; }
 .contact-form-intro p { margin-bottom: 0; color: var(--muted); line-height: 1.5; }
-.contact-form-card { padding: 30px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 24px rgba(140, 149, 159, 0.1); }
+.contact-form-card { padding: 30px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 24px var(--card-shadow); }
 .contact-form-card form { display: grid; gap: 28px; }
 .form-field { display: grid; gap: 7px; }
 .form-field label, .contact-detail-group legend { color: var(--ink); font-size: 14px; font-weight: 650; }
