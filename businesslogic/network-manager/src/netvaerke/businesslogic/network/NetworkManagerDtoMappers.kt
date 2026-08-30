@@ -17,39 +17,59 @@ internal fun Contact.toListItemDto(): TenantContactListItemDto {
         contactId = id,
         name = name,
         primaryEmailAddress = primaryEmail?.value,
-        image = contactImage
+        image = contactImage?.toDto(),
     )
 }
 
 internal fun Contact.toDto(): TenantContactDto = TenantContactDto(
     contactId = id,
     name = name,
-    emails = contactDetails.filterIsInstance<EmailAddress>(),
-    phoneNumbers = contactDetails.filterIsInstance<PhoneNumber>(),
-    workInfo = contactDetails.filterIsInstance<WorkInfo>().firstOrNull(),
-    note = contactDetails.filterIsInstance<Note>().firstOrNull(),
-    image = contactDetails.filterIsInstance<ContactImage>().firstOrNull(),
+    emails = contactDetails.filterIsInstance<EmailAddress>().map(EmailAddress::toDto),
+    phoneNumbers = contactDetails.filterIsInstance<PhoneNumber>().map(PhoneNumber::toDto),
+    workInfo = contactDetails.filterIsInstance<WorkInfo>().firstOrNull()?.toDto(),
+    note = contactDetails.filterIsInstance<Note>().firstOrNull()?.toDto(),
+    image = contactDetails.filterIsInstance<ContactImage>().firstOrNull()?.toDto(),
 )
 
 internal fun CreateNewContactDto.toContact(contactId: kotlin.uuid.Uuid): Contact = Contact(
     id = contactId,
     name = name,
     contactDetails = buildList {
-        addAll(emails)
-        addAll(phoneNumbers)
-        workInfo?.let(::add)
-        note?.let(::add)
+        addAll(emails.map(EmailAddressDto::toContactDetail))
+        addAll(phoneNumbers.map(PhoneNumberDto::toContactDetail))
+        workInfo?.toContactDetail()?.let(::add)
+        note?.toContactDetail()?.let(::add)
     },
 )
 
-internal fun UpdateContactDto.toContact(contactId: kotlin.uuid.Uuid, image: ContactImage?): Contact = Contact(
+internal fun UpdateContactDto.toContact(contactId: kotlin.uuid.Uuid, image: ContactImageDto?): Contact = Contact(
     id = contactId,
     name = name,
     contactDetails = buildList {
-        addAll(emails)
-        addAll(phoneNumbers)
-        workInfo?.let(::add)
-        note?.let(::add)
-        image?.let(::add)
+        addAll(emails.map(EmailAddressDto::toContactDetail))
+        addAll(phoneNumbers.map(PhoneNumberDto::toContactDetail))
+        workInfo?.toContactDetail()?.let(::add)
+        note?.toContactDetail()?.let(::add)
+        image?.toContactDetail()?.let(::add)
     },
 )
+
+internal fun EmailAddress.toDto(): EmailAddressDto = EmailAddressDto(value, isPrimary, label)
+
+internal fun PhoneNumber.toDto(): PhoneNumberDto = PhoneNumberDto(value, label)
+
+internal fun WorkInfo.toDto(): WorkInfoDto = WorkInfoDto(title, organization)
+
+internal fun Note.toDto(): NoteDto = NoteDto(value)
+
+internal fun ContactImage.toDto(): ContactImageDto = ContactImageDto(fileKey)
+
+private fun EmailAddressDto.toContactDetail(): EmailAddress = EmailAddress(value, isPrimary, label)
+
+private fun PhoneNumberDto.toContactDetail(): PhoneNumber = PhoneNumber(value, label)
+
+private fun WorkInfoDto.toContactDetail(): WorkInfo = WorkInfo(title, organization)
+
+private fun NoteDto.toContactDetail(): Note = Note(value)
+
+private fun ContactImageDto.toContactDetail(): ContactImage = ContactImage(fileKey)

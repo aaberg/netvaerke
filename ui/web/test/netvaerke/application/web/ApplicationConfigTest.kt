@@ -1,5 +1,6 @@
 package netvaerke.application.web
 
+import java.net.URI
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -9,6 +10,11 @@ class ApplicationConfigTest {
     private val requiredEnvironment = mapOf(
         "NATS_URL" to "nats://localhost:4222",
         "HANKO_API_URL" to "https://auth.netvaerke.com/",
+        "FILE_STORAGE_ENDPOINT" to "http://garage:3900",
+        "FILE_STORAGE_REGION" to "garage",
+        "FILE_STORAGE_BUCKET" to "netvaerke",
+        "FILE_STORAGE_ACCESS_KEY" to "access-key",
+        "FILE_STORAGE_SECRET_KEY" to "secret-key",
     )
 
     @Test
@@ -19,6 +25,10 @@ class ApplicationConfigTest {
         assertEquals(8080, config.port)
         assertEquals("netvaerke.membership-manager.v1", config.membershipSubject)
         assertEquals(5.seconds, config.natsRequestTimeout)
+        assertEquals("netvaerke.network-manager.v1", config.networkManagerSubject)
+        assertEquals(5.seconds, config.networkManagerRequestTimeout)
+        assertEquals(URI.create("http://garage:3900"), config.fileStorageEndpoint)
+        assertEquals(URI.create("http://garage:3900"), config.fileStoragePublicEndpoint)
         assertEquals("https://auth.netvaerke.com", config.hankoApiUrl)
         assertEquals("https://auth.netvaerke.com", config.hankoValidationApiUrl)
         assertEquals(null, config.hankoCookieDomain)
@@ -34,6 +44,7 @@ class ApplicationConfigTest {
                 "HANKO_COOKIE_DOMAIN" to ".netvaerke.com",
                 "SECURE_COOKIES" to "false",
                 "PORT" to "9090",
+                "FILE_STORAGE_PUBLIC_ENDPOINT" to "https://files.netvaerke.com",
             ),
         )
 
@@ -41,6 +52,7 @@ class ApplicationConfigTest {
         assertEquals("http://hanko:8000", config.hankoValidationApiUrl)
         assertEquals(".netvaerke.com", config.hankoCookieDomain)
         assertEquals(false, config.secureCookies)
+        assertEquals(URI.create("https://files.netvaerke.com"), config.fileStoragePublicEndpoint)
     }
 
     @Test

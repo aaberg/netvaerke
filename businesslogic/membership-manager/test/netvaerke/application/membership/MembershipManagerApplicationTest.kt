@@ -16,15 +16,15 @@ import liquibase.Liquibase
 import liquibase.database.DatabaseFactory
 import liquibase.database.jvm.JdbcConnection
 import liquibase.resource.DirectoryResourceAccessor
-import netvaerke.access.profile.Profile
-import netvaerke.access.tenant.Tenant
-import netvaerke.access.tenant.TenantType
 import netvaerke.ifx.Ifx
 import netvaerke.ifx.NatsTransport
 import netvaerke.manager.membership.GetProfileRequest
 import netvaerke.manager.membership.GetProfileResponse
 import netvaerke.manager.membership.MembershipManager
+import netvaerke.manager.membership.ProfileDto
 import netvaerke.manager.membership.RegisterProfileRequest
+import netvaerke.manager.membership.TenantDto
+import netvaerke.manager.membership.TenantTypeDto
 import netvaerke.testsupport.NatsTestBroker
 import netvaerke.testsupport.PostgresTestDatabase
 
@@ -75,11 +75,11 @@ class MembershipManagerApplicationTest {
 
                         assertEquals(
                             GetProfileResponse(
-                                profile = Profile(request.userId, request.name, request.email),
+                                profile = ProfileDto(request.userId, request.name, request.email),
                                 tenants = listOf(
-                                    Tenant(
+                                    TenantDto(
                                         id = request.userId,
-                                        type = TenantType.PERSONAL,
+                                        type = TenantTypeDto.PERSONAL,
                                         name = request.name,
                                         owners = listOf(request.userId),
                                     ),

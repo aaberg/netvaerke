@@ -19,7 +19,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
-import netvaerke.access.contact.EmailAddress
 import netvaerke.access.tenant.RegisterTenantRequest
 import netvaerke.access.tenant.Tenant
 import netvaerke.access.tenant.TenantAccessImpl
@@ -28,6 +27,7 @@ import netvaerke.access.tenant.TenantMemberRole
 import netvaerke.access.tenant.TenantType
 import netvaerke.access.tenant.repository.TenantRepository
 import netvaerke.businesslogic.network.CreateNewContactDto
+import netvaerke.businesslogic.network.EmailAddressDto
 import netvaerke.businesslogic.network.NetworkManager
 import netvaerke.ifx.Ifx
 import netvaerke.ifx.NatsTransport
@@ -91,7 +91,7 @@ class NetworkManagerApplicationTest {
                             actorId,
                             CreateNewContactDto(
                                 name = "Grace Hopper",
-                                emails = listOf(EmailAddress("grace@example.test", isPrimary = true)),
+                                emails = listOf(EmailAddressDto("grace@example.test", isPrimary = true)),
                                 phoneNumbers = emptyList(),
                                 workInfo = null,
                                 note = null,

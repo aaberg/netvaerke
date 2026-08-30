@@ -10,6 +10,7 @@ dependencies:
   - io.nats:jnats:2.26.0
   - software.amazon.awssdk:s3:2.32.11
   - software.amazon.awssdk:url-connection-client:2.32.11
+  - org.slf4j:slf4j-simple:2.0.17
 
 test-dependencies:
   - ../../utilities/test-support

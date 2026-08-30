@@ -53,7 +53,7 @@ class NetworkManagerImpl(
 
         val existingContact = findContact(tenantId, contactId)
         val image = existingContact.contactDetails.filterIsInstance<ContactImage>().firstOrNull()
-        saveContact(tenantId, updateContactDto.toContact(contactId, image))
+        saveContact(tenantId, updateContactDto.toContact(contactId, image?.toDto()))
     }
 
     override suspend fun deleteContact(

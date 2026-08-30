@@ -18,7 +18,7 @@ class FileStorageTest {
             val url = URI.create(storage.createGetUrl("images", "tenants/acme/contact.png", 1.hours))
 
             assertEquals("http", url.scheme)
-            assertEquals("garage.example.test", url.host)
+            assertEquals("files.example.test", url.host)
             assertEquals("/images/tenants/acme/contact.png", url.path)
             assertTrue(url.query.contains("X-Amz-Algorithm=AWS4-HMAC-SHA256"))
             assertTrue(url.query.contains("X-Amz-Expires=3600"))
@@ -70,6 +70,7 @@ class FileStorageTest {
 
     private fun storage(): GarageFileStorage = GarageFileStorage.create(
         endpoint = URI.create("http://garage.example.test:3900"),
+        publicEndpoint = URI.create("http://files.example.test:3900"),
         region = "garage",
         accessKey = "access-key",
         secretKey = "secret-key",

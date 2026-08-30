@@ -15,7 +15,7 @@ Open [http://localhost:8080](http://localhost:8080). The local Hanko API is avai
 To run the web application directly on the host, first start the local infrastructure and apply migrations:
 
 ```sh
-podman compose -f ui/web/docker-compose.yaml up -d db nats postgres_hanko
+podman compose -f ui/web/docker-compose.yaml up -d db nats postgres_hanko garage
 podman compose -f ui/web/docker-compose.yaml run --rm liquibase
 podman compose -f ui/web/docker-compose.yaml run --rm hanko-migrate
 podman compose -f ui/web/docker-compose.yaml up -d hanko

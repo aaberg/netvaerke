@@ -21,13 +21,43 @@
     </header>
 
     <main class="dashboard-main">
-        <p class="eyebrow">YOUR SPACE</p>
-        <h1>Welcome, ${profile.name?html}.</h1>
-        <section class="empty-state">
-            <div class="empty-state-icon" aria-hidden="true">+</div>
-            <h2>Your network is ready for its first connection.</h2>
-            <p>This is the beginning. Contact notes, follow-up rhythms, and communication support will live here.</p>
-        </section>
+        <div class="dashboard-title">
+            <div>
+                <p class="eyebrow">YOUR SPACE</p>
+                <h1>Contacts</h1>
+            </div>
+            <a class="button button-primary" href="/contacts/new">Add contact</a>
+        </div>
+
+        <#if contacts?size == 0>
+            <section class="empty-state">
+                <div class="empty-state-icon" aria-hidden="true">+</div>
+                <h2>Your network is ready for its first connection.</h2>
+                <p>Add the people you want to keep close. Notes, follow-up rhythms, and communication support will grow from here.</p>
+                <a class="button button-primary" href="/contacts/new">Add your first contact</a>
+            </section>
+        <#else>
+            <section class="contact-list" aria-label="Contacts">
+                <#list contacts as contact>
+                    <a class="contact-row" href="/contacts/${contact.contactId?html}/edit">
+                        <#if contact.imageUrl??>
+                            <img class="contact-avatar contact-photo" src="${contact.imageUrl?html}" alt="">
+                        <#else>
+                            <span class="contact-avatar" aria-hidden="true"><#if contact.name?has_content>${contact.name?substring(0, 1)?upper_case?html}<#else>?</#if></span>
+                        </#if>
+                        <span class="contact-summary">
+                            <strong>${contact.name?html}</strong>
+                            <#if contact.primaryEmailAddress??>
+                                <span>${contact.primaryEmailAddress?html}</span>
+                            <#else>
+                                <span>No email address</span>
+                            </#if>
+                        </span>
+                        <span class="contact-edit">Edit</span>
+                    </a>
+                </#list>
+            </section>
+        </#if>
     </main>
     <script type="module" src="/assets/hanko.js"></script>
 </body>

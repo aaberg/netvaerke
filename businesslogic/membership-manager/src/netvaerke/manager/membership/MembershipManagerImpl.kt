@@ -49,7 +49,7 @@ class MembershipManagerImpl(
             }
         }
 
-        return GetProfileResponse(profile, tenants)
+        return GetProfileResponse(profile.toDto(), tenants.map { it.toDto() })
     }
 }
 

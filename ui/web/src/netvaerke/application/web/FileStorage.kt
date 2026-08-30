@@ -88,6 +88,7 @@ internal class GarageFileStorage(
     internal companion object {
         fun create(
             endpoint: URI,
+            publicEndpoint: URI,
             region: String,
             accessKey: String,
             secretKey: String,
@@ -103,10 +104,16 @@ internal class GarageFileStorage(
                     .endpointOverride(endpoint)
                     .region(s3Region)
                     .credentialsProvider(credentials)
-                    .forcePathStyle(true)
+                    .serviceConfiguration(
+                        S3Configuration.builder()
+                            .pathStyleAccessEnabled(true)
+                            // Garage does not accept AWS SDK streaming payload signatures.
+                            .chunkedEncodingEnabled(false)
+                            .build(),
+                    )
                     .build(),
                 s3Presigner = S3Presigner.builder()
-                    .endpointOverride(endpoint)
+                    .endpointOverride(publicEndpoint)
                     .region(s3Region)
                     .credentialsProvider(credentials)
                     .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())

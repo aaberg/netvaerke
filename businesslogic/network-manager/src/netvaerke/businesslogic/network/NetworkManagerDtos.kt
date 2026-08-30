@@ -1,11 +1,6 @@
 package netvaerke.businesslogic.network
 
 import kotlinx.serialization.Serializable
-import netvaerke.access.contact.ContactImage
-import netvaerke.access.contact.EmailAddress
-import netvaerke.access.contact.Note
-import netvaerke.access.contact.PhoneNumber
-import netvaerke.access.contact.WorkInfo
 import kotlin.uuid.Uuid
 
 @Serializable
@@ -13,36 +8,36 @@ data class TenantContactListItemDto(
     val contactId: Uuid,
     val name: String,
     val primaryEmailAddress: String?,
-    val image: ContactImage?
+    val image: ContactImageDto?,
 )
 
 @Serializable
 data class TenantContactDto(
     val contactId: Uuid,
     val name: String,
-    val emails: List<EmailAddress>,
-    val phoneNumbers: List<PhoneNumber>,
-    val workInfo: WorkInfo?,
-    val note: Note?,
-    val image: ContactImage?
+    val emails: List<EmailAddressDto>,
+    val phoneNumbers: List<PhoneNumberDto>,
+    val workInfo: WorkInfoDto?,
+    val note: NoteDto?,
+    val image: ContactImageDto?,
 )
 
 @Serializable
 data class CreateNewContactDto(
     val name: String,
-    val emails: List<EmailAddress>,
-    val phoneNumbers: List<PhoneNumber>,
-    val workInfo: WorkInfo?,
-    val note: Note?,
+    val emails: List<EmailAddressDto>,
+    val phoneNumbers: List<PhoneNumberDto>,
+    val workInfo: WorkInfoDto?,
+    val note: NoteDto?,
 )
 
 @Serializable
 data class UpdateContactDto(
     val name: String,
-    val emails: List<EmailAddress>,
-    val phoneNumbers: List<PhoneNumber>,
-    val workInfo: WorkInfo?,
-    val note: Note?,
+    val emails: List<EmailAddressDto>,
+    val phoneNumbers: List<PhoneNumberDto>,
+    val workInfo: WorkInfoDto?,
+    val note: NoteDto?,
 )
 
 @Serializable

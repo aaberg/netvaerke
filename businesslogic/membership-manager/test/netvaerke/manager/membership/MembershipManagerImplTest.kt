@@ -86,7 +86,21 @@ class MembershipManagerImplTest {
 
         val response = MembershipManagerImpl(profileAccess, tenantAccess).getProfile(GetProfileRequest(userId))
 
-        assertEquals(GetProfileResponse(profile, listOf(personalTenant, organizationTenant)), response)
+        assertEquals(
+            GetProfileResponse(
+                profile = ProfileDto(profile.userId, profile.name, profile.email),
+                tenants = listOf(
+                    TenantDto(personalTenant.id, TenantTypeDto.PERSONAL, personalTenant.name, personalTenant.owners),
+                    TenantDto(
+                        organizationTenant.id,
+                        TenantTypeDto.ORGANIZATION,
+                        organizationTenant.name,
+                        organizationTenant.owners,
+                    ),
+                ),
+            ),
+            response,
+        )
     }
 
     @Test

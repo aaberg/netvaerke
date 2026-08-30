@@ -46,7 +46,7 @@ class NetworkManagerImplTest {
         val manager = NetworkManagerImpl(AllowingAuthorizationEngine, contactAccess)
 
         assertEquals(
-            TenantContactListItemDto(contactId, "Ada Lovelace", "ada@example.test", ContactImage("first-image")),
+            TenantContactListItemDto(contactId, "Ada Lovelace", "ada@example.test", ContactImageDto("first-image")),
             manager.getTenantContacts(tenantId, actorId).single(),
         )
         assertEquals(
@@ -54,13 +54,13 @@ class NetworkManagerImplTest {
                 contactId = contactId,
                 name = "Ada Lovelace",
                 emails = listOf(
-                    EmailAddress("ada@example.test", isPrimary = true),
-                    EmailAddress("ada@work.test", isPrimary = true),
+                    EmailAddressDto("ada@example.test", isPrimary = true),
+                    EmailAddressDto("ada@work.test", isPrimary = true),
                 ),
                 phoneNumbers = emptyList(),
-                workInfo = WorkInfo(title = "Programmer"),
-                note = Note("First note"),
-                image = ContactImage("first-image"),
+                workInfo = WorkInfoDto(title = "Programmer"),
+                note = NoteDto("First note"),
+                image = ContactImageDto("first-image"),
             ),
             manager.getContact(tenantId, actorId, contactId),
         )
@@ -96,8 +96,8 @@ class NetworkManagerImplTest {
                 randomUuid(),
                 randomUuid(),
                 contactDetails(emails = listOf(
-                    EmailAddress("first@example.test", isPrimary = true),
-                    EmailAddress("second@example.test", isPrimary = true),
+                    EmailAddressDto("first@example.test", isPrimary = true),
+                    EmailAddressDto("second@example.test", isPrimary = true),
                 )),
             )
         }
@@ -123,7 +123,7 @@ class NetworkManagerImplTest {
 
         assertTrue(upload.fileKey.startsWith("tenants/$tenantId/contacts/$contactId/images/"))
         assertEquals(ContactImageUpdateDto("former-key"), formerImage)
-        assertEquals(ContactImage(upload.fileKey), manager.getContact(tenantId, actorId, contactId)?.image)
+        assertEquals(ContactImageDto(upload.fileKey), manager.getContact(tenantId, actorId, contactId)?.image)
     }
 
     @Test
@@ -171,7 +171,7 @@ private class RecordingContactAccess : ContactAccess {
     }
 }
 
-private fun contactDetails(emails: List<EmailAddress> = emptyList()): CreateNewContactDto = CreateNewContactDto(
+private fun contactDetails(emails: List<EmailAddressDto> = emptyList()): CreateNewContactDto = CreateNewContactDto(
     name = "Ada Lovelace",
     emails = emails,
     phoneNumbers = emptyList(),

@@ -12,12 +12,16 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
+internal fun interface SessionValidator {
+    suspend fun validate(sessionToken: String?): HankoSessionResult
+}
+
 internal class HankoSessionValidator(
     private val validationApiUrl: String,
     private val httpClient: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(),
     private val json: Json = Json { ignoreUnknownKeys = true },
-) {
-    suspend fun validate(sessionToken: String?): HankoSessionResult {
+) : SessionValidator {
+    override suspend fun validate(sessionToken: String?): HankoSessionResult {
         if (sessionToken.isNullOrBlank()) return HankoSessionResult.Missing
 
         val request = HttpRequest.newBuilder(URI.create("$validationApiUrl/sessions/validate"))

@@ -1,7 +1,5 @@
 package netvaerke.manager.membership
 
-import netvaerke.access.profile.Profile
-import netvaerke.access.tenant.Tenant
 import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 
@@ -12,6 +10,6 @@ data class GetProfileRequest(
 
 @Serializable
 data class GetProfileResponse(
-    val profile: Profile,
-    val tenants: List<Tenant>,
+    val profile: ProfileDto,
+    val tenants: List<TenantDto>,
 )

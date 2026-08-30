@@ -5,6 +5,7 @@
 - This is a Kotlin CLI/Amper project; use the checked-in `./kotlin` wrapper, not Gradle.
 - `project.yaml` is the module manifest. Modules are `access/*` PostgreSQL-backed IFX libraries, `utilities/ifx` (Direct/NATS transports), `utilities/test-support` (Testcontainers helpers), and `businesslogic/*`.
 - Applications are `businesslogic/membership-manager` (`netvaerke.application.membership.MainKt`), `businesslogic/network-manager-application` (`netvaerke.application.network.MainKt`), and `ui/web` (`netvaerke.application.web.MainKt`). The membership manager exposes `MembershipManager` over NATS and binds profile/tenant access locally through `DirectTransport`; the network manager exposes `NetworkManager` over NATS and binds contact, tenant, and authorization services locally; the web app renders its Ktor/FreeMarker UI and consumes backend services over NATS.
+- The web module must depend on and use manager contracts only. Do not add `access/*` dependencies or imports to `ui/web`; manager APIs expose their own serializable DTOs and map access models internally.
 - Kotlin 2.4.10 modules use `allWarningsAsErrors: true`; warnings break compilation.
 
 ## Commands

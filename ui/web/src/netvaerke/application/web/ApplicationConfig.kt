@@ -2,6 +2,7 @@ package netvaerke.application.web
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.net.URI
 import java.util.Properties
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -12,6 +13,14 @@ internal data class ApplicationConfig(
     val natsUrl: String,
     val membershipSubject: String,
     val natsRequestTimeout: Duration,
+    val networkManagerSubject: String,
+    val networkManagerRequestTimeout: Duration,
+    val fileStorageEndpoint: URI,
+    val fileStoragePublicEndpoint: URI,
+    val fileStorageRegion: String,
+    val fileStorageBucket: String,
+    val fileStorageAccessKey: String,
+    val fileStorageSecretKey: String,
     val hankoApiUrl: String,
     val hankoValidationApiUrl: String,
     val hankoCookieDomain: String?,
@@ -19,6 +28,7 @@ internal data class ApplicationConfig(
 ) {
     companion object {
         private const val DEFAULT_MEMBERSHIP_SUBJECT = "netvaerke.membership-manager.v1"
+        private const val DEFAULT_NETWORK_MANAGER_SUBJECT = "netvaerke.network-manager.v1"
 
         fun load(
             arguments: Array<String>,
@@ -30,8 +40,10 @@ internal data class ApplicationConfig(
 
         fun fromEnvironment(environment: Map<String, String> = System.getenv()): ApplicationConfig {
             val timeoutSeconds = environment.positiveLongOrDefault("MEMBERSHIP_NATS_TIMEOUT_SECONDS", 5)
+            val networkManagerTimeoutSeconds = environment.positiveLongOrDefault("NETWORK_MANAGER_NATS_TIMEOUT_SECONDS", 5)
             val port = environment.positiveIntOrDefault("PORT", 8080)
             val hankoApiUrl = environment.requireHankoApiUrl().trimEnd('/')
+            val fileStorageEndpoint = environment.requireUri("FILE_STORAGE_ENDPOINT")
 
             return ApplicationConfig(
                 host = environment.nonBlankOrDefault("HOST", "0.0.0.0"),
@@ -39,6 +51,17 @@ internal data class ApplicationConfig(
                 natsUrl = environment.requireNonBlank("NATS_URL"),
                 membershipSubject = environment.nonBlankOrDefault("MEMBERSHIP_NATS_SUBJECT", DEFAULT_MEMBERSHIP_SUBJECT),
                 natsRequestTimeout = timeoutSeconds.seconds,
+                networkManagerSubject = environment.nonBlankOrDefault(
+                    "NETWORK_MANAGER_NATS_SUBJECT",
+                    DEFAULT_NETWORK_MANAGER_SUBJECT,
+                ),
+                networkManagerRequestTimeout = networkManagerTimeoutSeconds.seconds,
+                fileStorageEndpoint = fileStorageEndpoint,
+                fileStoragePublicEndpoint = environment.optionalUri("FILE_STORAGE_PUBLIC_ENDPOINT") ?: fileStorageEndpoint,
+                fileStorageRegion = environment.requireNonBlank("FILE_STORAGE_REGION"),
+                fileStorageBucket = environment.requireNonBlank("FILE_STORAGE_BUCKET"),
+                fileStorageAccessKey = environment.requireNonBlank("FILE_STORAGE_ACCESS_KEY"),
+                fileStorageSecretKey = environment.requireNonBlank("FILE_STORAGE_SECRET_KEY"),
                 hankoApiUrl = hankoApiUrl,
                 hankoValidationApiUrl = environment.nonBlankOrDefault("HANKO_VALIDATION_API_URL", hankoApiUrl).trimEnd('/'),
                 hankoCookieDomain = environment["HANKO_COOKIE_DOMAIN"]?.takeIf(String::isNotBlank),
@@ -73,6 +96,15 @@ private fun Map<String, String>.requireHankoApiUrl(): String =
     requireNotNull(this["HANKO_API_URL"]?.takeIf(String::isNotBlank)) {
         "HANKO_API_URL must be configured. For local development, pass --config ui/web/config/local.properties"
     }
+
+private fun Map<String, String>.requireUri(name: String): URI =
+    requireNotNull(optionalUri(name)) { "$name must be configured as an absolute HTTP(S) URL" }
+
+private fun Map<String, String>.optionalUri(name: String): URI? = this[name]?.takeIf(String::isNotBlank)?.let { value ->
+    runCatching { URI.create(value) }.getOrNull()?.takeIf { uri ->
+        uri.isAbsolute && uri.host != null && (uri.scheme == "http" || uri.scheme == "https")
+    } ?: throw IllegalArgumentException("$name must be configured as an absolute HTTP(S) URL")
+}
 
 private fun Map<String, String>.nonBlankOrDefault(name: String, default: String): String =
     this[name]?.takeIf(String::isNotBlank) ?: default
