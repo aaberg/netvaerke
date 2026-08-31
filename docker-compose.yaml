@@ -39,6 +39,35 @@ services:
       - "4222:4222"
       - "8222:8222"
 
+  tempo:
+    image: grafana/tempo:2.7.0
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./observability/tempo.local.yaml:/etc/tempo/tempo.yaml:ro,z
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.121.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    depends_on:
+      - tempo
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    volumes:
+      - ./observability/otel-collector.local.yaml:/etc/otelcol-contrib/config.yaml:ro,z
+
+  grafana:
+    image: grafana/grafana:12.0.1
+    depends_on:
+      - tempo
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro,z
+
 # hanko services
   postgres_hanko:
     image: postgres:17-alpine

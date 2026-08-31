@@ -1,6 +1,7 @@
 package netvaerke.application.web
 
 import io.nats.client.Nats
+import io.opentelemetry.api.GlobalOpenTelemetry
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import netvaerke.ifx.Ifx
@@ -20,6 +21,7 @@ fun main(arguments: Array<String>) {
     ).use { fileStorage ->
         Nats.connect(config.natsUrl).use { connection ->
             Ifx {
+                tracing(GlobalOpenTelemetry.get())
                 service<MembershipManager> {
                     via(NatsTransport(connection, requestTimeout = config.natsRequestTimeout).requestReply(config.membershipSubject))
                 }

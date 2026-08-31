@@ -6,9 +6,13 @@ RUN ./kotlin package -m web -f executable-jar
 
 FROM eclipse-temurin:21-jre-jammy
 
+ARG OPENTELEMETRY_JAVA_AGENT_VERSION=2.21.0
+
 RUN useradd --system --uid 10002 web
 WORKDIR /app
 COPY --from=build /workspace/build/tasks/_web_executableJarJvm/web-jvm-executable.jar app.jar
+ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OPENTELEMETRY_JAVA_AGENT_VERSION}/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
+RUN chmod 0444 /app/opentelemetry-javaagent.jar
 USER web
 
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+ENTRYPOINT ["java", "-javaagent:/app/opentelemetry-javaagent.jar", "-jar", "/app/app.jar"]

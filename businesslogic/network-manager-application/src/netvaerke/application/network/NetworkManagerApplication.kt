@@ -1,6 +1,7 @@
 package netvaerke.application.network
 
 import io.nats.client.Connection
+import io.opentelemetry.api.GlobalOpenTelemetry
 import javax.sql.DataSource
 import netvaerke.access.contact.ContactAccess
 import netvaerke.access.contact.ContactAccessImpl
@@ -22,6 +23,7 @@ internal fun createNetworkManagerIfx(
     config: ApplicationConfig,
 ): Ifx {
     val ifx = Ifx {
+        tracing(GlobalOpenTelemetry.get())
         service<ContactAccess> {
             via(DirectTransport)
         }

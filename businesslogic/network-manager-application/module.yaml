@@ -7,6 +7,7 @@ dependencies:
   - ../authorization-engine
   - ../network-manager
   - io.nats:jnats:2.26.0
+  - io.opentelemetry:opentelemetry-api:1.63.0
   - org.postgresql:postgresql:42.7.7
 
 test-dependencies:

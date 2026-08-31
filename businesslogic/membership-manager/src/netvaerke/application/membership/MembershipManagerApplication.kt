@@ -1,6 +1,7 @@
 package netvaerke.application.membership
 
 import io.nats.client.Connection
+import io.opentelemetry.api.GlobalOpenTelemetry
 import javax.sql.DataSource
 import netvaerke.access.profile.ProfileAccess
 import netvaerke.access.profile.ProfileAccessImpl
@@ -20,6 +21,7 @@ internal fun createMembershipManagerIfx(
     config: ApplicationConfig,
 ): Ifx {
     val ifx = Ifx {
+        tracing(GlobalOpenTelemetry.get())
         service<ProfileAccess> {
             via(DirectTransport)
         }
