@@ -1,9 +1,13 @@
-product: jvm/lib
+product: jvm/app
 
 dependencies:
   - ../../utilities/ifx
   - ../../access/profile-access
   - ../../access/tenant-access
+  - ../../businesslogic/membership-manager
+  - io.nats:jnats:2.26.0
+  - io.opentelemetry:opentelemetry-api:1.63.0
+  - org.postgresql:postgresql:42.7.7
 
 test-dependencies:
   - ../../utilities/test-support
@@ -11,6 +15,8 @@ test-dependencies:
   - org.liquibase:liquibase-core:5.0.1
 
 settings:
+  jvm:
+    mainClass: netvaerke.application.membership.MainKt
   kotlin:
     version: 2.4.10
     allWarningsAsErrors: true

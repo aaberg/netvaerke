@@ -4,8 +4,8 @@ dependencies:
   - ../../utilities/ifx
   - ../../access/contact-access
   - ../../access/tenant-access
-  - ../authorization-engine
-  - ../network-manager
+  - ../../businesslogic/authorization-engine
+  - ../../businesslogic/network-manager
   - io.nats:jnats:2.26.0
   - io.opentelemetry:opentelemetry-api:1.63.0
   - org.postgresql:postgresql:42.7.7

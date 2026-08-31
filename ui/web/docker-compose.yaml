@@ -45,7 +45,7 @@ services:
   membership-manager:
     build:
       context: ../..
-      dockerfile: businesslogic/membership-manager/Dockerfile
+      dockerfile: subsystems/membership-manager-application/Dockerfile
     restart: unless-stopped
     depends_on:
       liquibase:
@@ -75,7 +75,7 @@ services:
   network-manager:
     build:
       context: ../..
-      dockerfile: businesslogic/network-manager-application/Dockerfile
+      dockerfile: subsystems/network-manager-application/Dockerfile
     restart: unless-stopped
     depends_on:
       liquibase:

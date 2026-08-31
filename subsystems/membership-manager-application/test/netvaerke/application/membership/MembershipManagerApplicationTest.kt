@@ -4,6 +4,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
 import javax.sql.DataSource
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -27,6 +28,7 @@ import netvaerke.manager.membership.TenantDto
 import netvaerke.manager.membership.TenantTypeDto
 import netvaerke.testsupport.NatsTestBroker
 import netvaerke.testsupport.PostgresTestDatabase
+import org.postgresql.ds.PGSimpleDataSource
 
 class MembershipManagerApplicationTest {
     private val dataSource: DataSource
@@ -39,6 +41,11 @@ class MembershipManagerApplicationTest {
                 statement.executeUpdate("TRUNCATE TABLE profile.profile, tenant.tenant CASCADE")
             }
         }
+    }
+
+    @AfterTest
+    fun dropMembershipDatabase() {
+        MembershipApplicationTestDatabase.drop()
     }
 
     @Test
@@ -95,8 +102,33 @@ class MembershipManagerApplicationTest {
 }
 
 private object MembershipApplicationTestDatabase {
-    val dataSource: DataSource by lazy {
-        PostgresTestDatabase.dataSource().also(::runMigrations)
+    private val databaseName = "membership_manager_${UUID.randomUUID()}".replace("-", "_")
+    private val dataSourceDelegate = lazy {
+        val sharedDataSource = PostgresTestDatabase.dataSource() as PGSimpleDataSource
+        sharedDataSource.connection.use { connection ->
+            connection.createStatement().use { statement ->
+                statement.execute("CREATE DATABASE $databaseName")
+            }
+        }
+        val sharedUrl = checkNotNull(sharedDataSource.getURL())
+        val isolatedUrl = databaseUrl(sharedUrl, databaseName)
+        PGSimpleDataSource().apply {
+            setURL(isolatedUrl)
+            user = sharedDataSource.getUser()
+            password = sharedDataSource.getPassword()
+        }.also(::runMigrations)
+    }
+
+    val dataSource: DataSource
+        get() = dataSourceDelegate.value
+
+    fun drop() {
+        if (!dataSourceDelegate.isInitialized()) return
+        PostgresTestDatabase.dataSource().connection.use { connection ->
+            connection.createStatement().use { statement ->
+                statement.execute("DROP DATABASE $databaseName WITH (FORCE)")
+            }
+        }
     }
 
     private fun runMigrations(dataSource: DataSource) {
@@ -118,6 +150,13 @@ private object MembershipApplicationTestDatabase {
             .map { it.resolve("liquibase") }
             .firstOrNull { Files.isRegularFile(it.resolve("changelog-root.yaml")) }
             ?: error("Could not locate the Liquibase changelog directory")
+}
+
+private fun databaseUrl(url: String, databaseName: String): String {
+    val queryStart = url.indexOf('?')
+    val baseUrl = if (queryStart < 0) url else url.substring(0, queryStart)
+    val query = if (queryStart < 0) "" else url.substring(queryStart)
+    return "${baseUrl.substringBeforeLast('/')}/$databaseName$query"
 }
 
 private fun randomUuid(): Uuid = Uuid.parse(UUID.randomUUID().toString())

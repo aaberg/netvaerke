@@ -24,13 +24,13 @@ podman compose -f ui/web/docker-compose.yaml up -d hanko
 Then start each backend manager in a separate terminal:
 
 ```sh
-./kotlin run -m membership-manager -- \
-  --config businesslogic/membership-manager/config/local.properties
+./kotlin run -m membership-manager-application -- \
+  --config subsystems/membership-manager-application/config/local.properties
 ```
 
 ```sh
 ./kotlin run -m network-manager-application -- \
-  --config businesslogic/network-manager-application/config/local.properties
+  --config subsystems/network-manager-application/config/local.properties
 ```
 
 In a third terminal, run the web application with its tracked local configuration:
@@ -48,7 +48,7 @@ The membership manager runs as a JVM application. It exposes `MembershipManager`
 Start PostgreSQL, Liquibase, NATS, and the application with:
 
 ```sh
-docker compose up --build membership-manager
+podman compose -f ui/web/docker-compose.yaml up --build membership-manager
 ```
 
 The default NATS operations are:
@@ -68,8 +68,8 @@ docker compose run --rm liquibase
 Then run the application with the tracked local configuration:
 
 ```sh
-./kotlin run -m membership-manager -- \
-  --config businesslogic/membership-manager/config/local.properties
+./kotlin run -m membership-manager-application -- \
+  --config subsystems/membership-manager-application/config/local.properties
 ```
 
 Environment variables override values from the configuration file. Omitting `--config` retains the environment-only behavior used by the container.
@@ -77,7 +77,7 @@ Environment variables override values from the configuration file. Omitting `--c
 To build the executable JAR directly:
 
 ```sh
-./kotlin package -m membership-manager -f executable-jar
+./kotlin package -m membership-manager-application -f executable-jar
 ```
 
 ## Network manager application
