@@ -1,4 +1,4 @@
-package netvaerke.businesslogic.network
+package netvaerke.manager.network
 
 import java.util.UUID
 import netvaerke.access.contact.ContactAccess

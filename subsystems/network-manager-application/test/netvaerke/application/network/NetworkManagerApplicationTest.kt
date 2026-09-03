@@ -26,9 +26,9 @@ import netvaerke.access.tenant.TenantMember
 import netvaerke.access.tenant.TenantMemberRole
 import netvaerke.access.tenant.TenantType
 import netvaerke.access.tenant.repository.TenantRepository
-import netvaerke.businesslogic.network.CreateNewContactDto
-import netvaerke.businesslogic.network.EmailAddressDto
-import netvaerke.businesslogic.network.NetworkManager
+import netvaerke.manager.network.CreateNewContactDto
+import netvaerke.manager.network.EmailAddressDto
+import netvaerke.manager.network.NetworkManager
 import netvaerke.ifx.Ifx
 import netvaerke.ifx.NatsTransport
 import netvaerke.testsupport.NatsTestBroker

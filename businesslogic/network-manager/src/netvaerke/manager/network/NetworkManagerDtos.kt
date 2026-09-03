@@ -1,4 +1,4 @@
-package netvaerke.businesslogic.network
+package netvaerke.manager.network
 
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid

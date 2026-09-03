@@ -6,7 +6,7 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import netvaerke.ifx.Ifx
 import netvaerke.ifx.NatsTransport
-import netvaerke.businesslogic.network.NetworkManager
+import netvaerke.manager.network.NetworkManager
 import netvaerke.manager.membership.MembershipManager
 
 fun main(arguments: Array<String>) {

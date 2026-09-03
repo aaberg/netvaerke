@@ -1,4 +1,4 @@
-package netvaerke.businesslogic.network
+package netvaerke.manager.network
 
 import netvaerke.access.contact.Contact
 import netvaerke.access.contact.ContactImage

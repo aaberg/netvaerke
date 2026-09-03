@@ -1,13 +1,13 @@
 package netvaerke.application.web
 
 import io.ktor.http.Parameters
-import netvaerke.businesslogic.network.CreateNewContactDto
-import netvaerke.businesslogic.network.EmailAddressDto
-import netvaerke.businesslogic.network.NoteDto
-import netvaerke.businesslogic.network.PhoneNumberDto
-import netvaerke.businesslogic.network.TenantContactDto
-import netvaerke.businesslogic.network.UpdateContactDto
-import netvaerke.businesslogic.network.WorkInfoDto
+import netvaerke.manager.network.CreateNewContactDto
+import netvaerke.manager.network.EmailAddressDto
+import netvaerke.manager.network.NoteDto
+import netvaerke.manager.network.PhoneNumberDto
+import netvaerke.manager.network.TenantContactDto
+import netvaerke.manager.network.UpdateContactDto
+import netvaerke.manager.network.WorkInfoDto
 
 internal data class ContactForm(
     val name: String = "",

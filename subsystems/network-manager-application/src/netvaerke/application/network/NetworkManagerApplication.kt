@@ -9,8 +9,8 @@ import netvaerke.access.contact.repository.ContactRepository
 import netvaerke.access.tenant.TenantAccess
 import netvaerke.access.tenant.TenantAccessImpl
 import netvaerke.access.tenant.repository.TenantRepository
-import netvaerke.businesslogic.network.NetworkManager
-import netvaerke.businesslogic.network.NetworkManagerImpl
+import netvaerke.manager.network.NetworkManager
+import netvaerke.manager.network.NetworkManagerImpl
 import netvaerke.engine.authorization.AuthorizationEngine
 import netvaerke.engine.authorization.AuthorizationEngineImpl
 import netvaerke.ifx.DirectTransport

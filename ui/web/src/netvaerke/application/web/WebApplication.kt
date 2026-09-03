@@ -20,10 +20,10 @@ import io.ktor.server.http.content.staticResources
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
-import netvaerke.businesslogic.network.AuthorizationDeniedException
-import netvaerke.businesslogic.network.ContactNotFoundException
-import netvaerke.businesslogic.network.NetworkManager
-import netvaerke.businesslogic.network.TenantContactListItemDto
+import netvaerke.manager.network.AuthorizationDeniedException
+import netvaerke.manager.network.ContactNotFoundException
+import netvaerke.manager.network.NetworkManager
+import netvaerke.manager.network.TenantContactListItemDto
 import netvaerke.ifx.IfxRemoteException
 import netvaerke.manager.membership.GetProfileRequest
 import netvaerke.manager.membership.MembershipManager
