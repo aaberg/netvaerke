@@ -2,10 +2,8 @@ product: jvm/lib
 
 dependencies:
   - ../../utilities/ifx
-  - ../../access/profile-access:
-      exported: true
-  - ../../access/tenant-access:
-      exported: true
+  - ../../access/profile-access
+  - ../../access/tenant-access
 
 test-dependencies:
   - ../../utilities/test-support
