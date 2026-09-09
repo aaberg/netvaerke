@@ -1,5 +1,6 @@
 modules:
   - access/contact-access
+  - access/engagement-access
   - access/profile-access
   - access/tenant-access
   - businesslogic/authorization-engine
