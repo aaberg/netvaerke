@@ -5,7 +5,7 @@ CREATE SCHEMA engagement;
 CREATE TABLE engagement.interaction (
     id UUID PRIMARY KEY,
     tenant UUID NOT NULL,
-    contact_id UUID NOT NULL,
+    resource_id UUID NOT NULL,
     user_id UUID NOT NULL,
     channel VARCHAR(16) NOT NULL,
     notes TEXT,
@@ -17,7 +17,7 @@ CREATE TABLE engagement.interaction (
 );
 
 CREATE INDEX interaction_tenant_contact_occurred_idx
-    ON engagement.interaction (tenant, contact_id, occurred_at DESC, id DESC);
+    ON engagement.interaction (tenant, resource_id, occurred_at DESC, id DESC);
 
 CREATE INDEX interaction_tenant_user_occurred_idx
     ON engagement.interaction (tenant, user_id, occurred_at DESC, id DESC);

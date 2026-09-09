@@ -7,7 +7,7 @@ import netvaerke.access.engagement.InteractionChannel
 data class InteractionEntity(
     val id: Uuid,
     val tenantId: Uuid,
-    val contactId: Uuid,
+    val resourceId: Uuid,
     val userId: Uuid,
     val channel: InteractionChannel,
     val notes: String?,

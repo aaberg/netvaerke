@@ -5,7 +5,7 @@ import kotlin.uuid.Uuid
 
 data class Interaction(
     val id: Uuid,
-    val contactId: Uuid,
+    val resourceId: Uuid,
     val userId: Uuid,
     val channel: InteractionChannel,
     val notes: String?,

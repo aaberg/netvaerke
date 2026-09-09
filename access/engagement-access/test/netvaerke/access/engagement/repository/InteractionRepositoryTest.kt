@@ -67,7 +67,7 @@ class InteractionRepositoryTest {
         assertNotNull(storedEarlier.createdAt)
         assertEquals(
             listOf(storedLater, storedEarlier),
-            access.getContactInteractions(tenantId, contactId),
+            access.getResourceInteractions(tenantId, contactId),
         )
     }
 
@@ -82,7 +82,7 @@ class InteractionRepositoryTest {
         )
         access.registerInteraction(tenantId, interaction)
         val updated = interaction.copy(
-            contactId = randomUuid(),
+            resourceId = randomUuid(),
             userId = randomUuid(),
             channel = InteractionChannel.IN_PERSON,
             notes = "Met at the conference",
@@ -92,7 +92,7 @@ class InteractionRepositoryTest {
         assertEquals(true, access.updateInteraction(tenantId, updated))
 
         val stored = assertNotNull(access.getInteraction(tenantId, interaction.id))
-        assertEquals(interaction.contactId, stored.contactId)
+        assertEquals(interaction.resourceId, stored.resourceId)
         assertEquals(interaction.userId, stored.userId)
         assertEquals(InteractionChannel.IN_PERSON, stored.channel)
         assertEquals("Met at the conference", stored.notes)
@@ -107,7 +107,7 @@ class InteractionRepositoryTest {
         access.registerInteraction(tenantId, interaction)
 
         assertNull(access.getInteraction(otherTenantId, interaction.id))
-        assertEquals(emptyList(), access.getContactInteractions(otherTenantId, interaction.contactId))
+        assertEquals(emptyList(), access.getResourceInteractions(otherTenantId, interaction.resourceId))
         assertFalse(access.updateInteraction(otherTenantId, interaction.copy(notes = "Impostor update")))
         assertFalse(access.deleteInteraction(otherTenantId, interaction.id))
         assertEquals(interaction.notes, access.getInteraction(tenantId, interaction.id)?.notes)
@@ -123,7 +123,7 @@ class InteractionRepositoryTest {
         notes: String?,
     ): Interaction = Interaction(
         id = randomUuid(),
-        contactId = contactId,
+        resourceId = contactId,
         userId = randomUuid(),
         channel = channel,
         notes = notes,

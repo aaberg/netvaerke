@@ -16,7 +16,7 @@ class InteractionRepository(
             connection.prepareStatement(REGISTER_INTERACTION).use { statement ->
                 statement.setObject(1, interaction.id.toJavaUuid())
                 statement.setObject(2, interaction.tenantId.toJavaUuid())
-                statement.setObject(3, interaction.contactId.toJavaUuid())
+                statement.setObject(3, interaction.resourceId.toJavaUuid())
                 statement.setObject(4, interaction.userId.toJavaUuid())
                 statement.setString(5, interaction.channel.name)
                 statement.setString(6, interaction.notes)
@@ -57,11 +57,11 @@ class InteractionRepository(
             }
         }
 
-    fun getContactInteractions(tenantId: Uuid, contactId: Uuid): List<InteractionEntity> =
+    fun getResourceInteractions(tenantId: Uuid, resourceId: Uuid): List<InteractionEntity> =
         dataSource.connection.use { connection ->
-            connection.prepareStatement(GET_CONTACT_INTERACTIONS).use { statement ->
+            connection.prepareStatement(GET_RESOURCE_INTERACTIONS).use { statement ->
                 statement.setObject(1, tenantId.toJavaUuid())
-                statement.setObject(2, contactId.toJavaUuid())
+                statement.setObject(2, resourceId.toJavaUuid())
                 statement.executeQuery().use { result ->
                     buildList {
                         while (result.next()) {
@@ -75,7 +75,7 @@ class InteractionRepository(
     private fun ResultSet.toInteractionEntity(): InteractionEntity = InteractionEntity(
         id = Uuid.parse(getString("id")),
         tenantId = Uuid.parse(getString("tenant")),
-        contactId = Uuid.parse(getString("contact_id")),
+        resourceId = Uuid.parse(getString("resource_id")),
         userId = Uuid.parse(getString("user_id")),
         channel = InteractionChannel.valueOf(getString("channel")),
         notes = getString("notes"),
@@ -88,7 +88,7 @@ class InteractionRepository(
     private companion object {
         const val REGISTER_INTERACTION = """
             INSERT INTO engagement.interaction (
-                id, tenant, contact_id, user_id, channel, notes, occurred_at
+                id, tenant, resource_id, user_id, channel, notes, occurred_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (id) DO NOTHING
         """
@@ -105,15 +105,15 @@ class InteractionRepository(
         """
 
         const val GET_INTERACTION = """
-            SELECT id, tenant, contact_id, user_id, channel, notes, occurred_at, created_at
+            SELECT id, tenant, resource_id, user_id, channel, notes, occurred_at, created_at
             FROM engagement.interaction
             WHERE id = ? AND tenant = ?
         """
 
-        const val GET_CONTACT_INTERACTIONS = """
-            SELECT id, tenant, contact_id, user_id, channel, notes, occurred_at, created_at
+        const val GET_RESOURCE_INTERACTIONS = """
+            SELECT id, tenant, resource_id, user_id, channel, notes, occurred_at, created_at
             FROM engagement.interaction
-            WHERE tenant = ? AND contact_id = ?
+            WHERE tenant = ? AND resource_id = ?
             ORDER BY occurred_at DESC, id DESC
         """
     }

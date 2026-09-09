@@ -31,15 +31,15 @@ class EngagementAccessImpl(
             repository.getInteraction(tenantId, interactionId)
         }?.toInteraction()
 
-    override suspend fun getContactInteractions(tenantId: Uuid, contactId: Uuid): List<Interaction> =
+    override suspend fun getResourceInteractions(tenantId: Uuid, resourceId: Uuid): List<Interaction> =
         withContext(jdbcDispatcher) {
-            repository.getContactInteractions(tenantId, contactId)
+            repository.getResourceInteractions(tenantId, resourceId)
         }.map { it.toInteraction() }
 
     private fun Interaction.toEntity(tenantId: Uuid): InteractionEntity = InteractionEntity(
         id = id,
         tenantId = tenantId,
-        contactId = contactId,
+        resourceId = resourceId,
         userId = userId,
         channel = channel,
         notes = notes,
@@ -49,7 +49,7 @@ class EngagementAccessImpl(
 
     private fun InteractionEntity.toInteraction(): Interaction = Interaction(
         id = id,
-        contactId = contactId,
+        resourceId = resourceId,
         userId = userId,
         channel = channel,
         notes = notes,
