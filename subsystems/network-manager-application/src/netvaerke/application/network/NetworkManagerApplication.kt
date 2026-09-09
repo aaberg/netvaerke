@@ -6,6 +6,9 @@ import javax.sql.DataSource
 import netvaerke.access.contact.ContactAccess
 import netvaerke.access.contact.ContactAccessImpl
 import netvaerke.access.contact.repository.ContactRepository
+import netvaerke.access.engagement.EngagementAccess
+import netvaerke.access.engagement.EngagementAccessImpl
+import netvaerke.access.engagement.repository.InteractionRepository
 import netvaerke.access.tenant.TenantAccess
 import netvaerke.access.tenant.TenantAccessImpl
 import netvaerke.access.tenant.repository.TenantRepository
@@ -25,6 +28,9 @@ internal fun createNetworkManagerIfx(
     val ifx = Ifx {
         tracing(GlobalOpenTelemetry.get())
         service<ContactAccess> {
+            via(DirectTransport)
+        }
+        service<EngagementAccess> {
             via(DirectTransport)
         }
         service<TenantAccess> {
@@ -48,12 +54,14 @@ internal fun createNetworkManagerIfx(
 
     try {
         ifx.expose<ContactAccess>(ContactAccessImpl(ContactRepository(dataSource)))
+        ifx.expose<EngagementAccess>(EngagementAccessImpl(InteractionRepository(dataSource)))
         ifx.expose<TenantAccess>(TenantAccessImpl(TenantRepository(dataSource)))
         ifx.expose<AuthorizationEngine>(AuthorizationEngineImpl(ifx.create<TenantAccess>()))
         ifx.expose<NetworkManager>(
             NetworkManagerImpl(
                 authorizer = ifx.create<AuthorizationEngine>(),
                 contactAccess = ifx.create<ContactAccess>(),
+                engagementAccess = ifx.create<EngagementAccess>(),
             ),
         )
         return ifx

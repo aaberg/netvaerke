@@ -1,5 +1,8 @@
 package netvaerke.manager.network
 
+import java.time.Instant
+import netvaerke.access.engagement.Interaction
+import netvaerke.access.engagement.InteractionChannel
 import netvaerke.access.contact.Contact
 import netvaerke.access.contact.ContactImage
 import netvaerke.access.contact.EmailAddress
@@ -63,6 +66,44 @@ internal fun WorkInfo.toDto(): WorkInfoDto = WorkInfoDto(title, organization)
 internal fun Note.toDto(): NoteDto = NoteDto(value)
 
 internal fun ContactImage.toDto(): ContactImageDto = ContactImageDto(fileKey)
+
+internal fun Interaction.toDto(): ContactInteractionDto = ContactInteractionDto(
+    interactionId = id,
+    recordedByUserId = userId,
+    channel = channel.toDto(),
+    notes = notes,
+    occurredAt = occurredAt.toString(),
+    createdAt = checkNotNull(createdAt).toString(),
+)
+
+internal fun CreateContactInteractionDto.toInteraction(
+    contactId: kotlin.uuid.Uuid,
+    actorId: kotlin.uuid.Uuid,
+    interactionId: kotlin.uuid.Uuid,
+): Interaction = Interaction(
+    id = interactionId,
+    resourceId = contactId,
+    userId = actorId,
+    channel = channel.toInteractionChannel(),
+    notes = notes,
+    occurredAt = occurredAt.toInstant("Interaction occurrence time"),
+)
+
+internal fun Interaction.update(update: UpdateContactInteractionDto): Interaction = copy(
+    channel = update.channel.toInteractionChannel(),
+    notes = update.notes,
+    occurredAt = update.occurredAt.toInstant("Interaction occurrence time"),
+)
+
+private fun InteractionChannel.toDto(): InteractionChannelDto = InteractionChannelDto.valueOf(name)
+
+private fun InteractionChannelDto.toInteractionChannel(): InteractionChannel = InteractionChannel.valueOf(name)
+
+private fun String.toInstant(field: String): Instant = try {
+    Instant.parse(this)
+} catch (exception: Exception) {
+    throw IllegalArgumentException("$field must be an ISO-8601 instant", exception)
+}
 
 private fun EmailAddressDto.toContactDetail(): EmailAddress = EmailAddress(value, isPrimary, label)
 

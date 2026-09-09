@@ -27,8 +27,11 @@ import netvaerke.access.tenant.TenantMemberRole
 import netvaerke.access.tenant.TenantType
 import netvaerke.access.tenant.repository.TenantRepository
 import netvaerke.manager.network.CreateNewContactDto
+import netvaerke.manager.network.CreateContactInteractionDto
 import netvaerke.manager.network.EmailAddressDto
 import netvaerke.manager.network.NetworkManager
+import netvaerke.manager.network.InteractionChannelDto
+import netvaerke.manager.network.UpdateContactInteractionDto
 import netvaerke.ifx.Ifx
 import netvaerke.ifx.NatsTransport
 import netvaerke.testsupport.NatsTestBroker
@@ -43,7 +46,7 @@ class NetworkManagerApplicationTest {
     fun clearNetworkData() {
         dataSource.connection.use { connection ->
             connection.createStatement().use { statement ->
-                statement.executeUpdate("TRUNCATE TABLE contact.contact, tenant.tenant CASCADE")
+                statement.executeUpdate("TRUNCATE TABLE engagement.interaction, contact.contact, tenant.tenant CASCADE")
             }
         }
     }
@@ -107,6 +110,45 @@ class NetworkManagerApplicationTest {
                         val upload = client.reserveContactImageUpload(tenantId, actorId, created.contactId)
                         assertTrue(upload.fileKey.startsWith("tenants/$tenantId/contacts/${created.contactId}/images/"))
                         assertEquals(null, client.setContactImage(tenantId, actorId, created.contactId, null).previousFileKey)
+
+                        val interaction = client.registerContactInteraction(
+                            tenantId,
+                            actorId,
+                            created.contactId,
+                            CreateContactInteractionDto(
+                                channel = InteractionChannelDto.EMAIL,
+                                notes = "Sent a follow-up.",
+                                occurredAt = "2026-09-09T10:00:00Z",
+                            ),
+                        )
+                        assertEquals(
+                            listOf(interaction),
+                            client.getContactOverview(tenantId, actorId, created.contactId)?.interactions,
+                        )
+
+                        client.updateContactInteraction(
+                            tenantId,
+                            actorId,
+                            created.contactId,
+                            interaction.interactionId,
+                            UpdateContactInteractionDto(
+                                channel = InteractionChannelDto.PHONE,
+                                notes = "Discussed the proposal.",
+                                occurredAt = "2026-09-10T10:00:00Z",
+                            ),
+                        )
+                        assertEquals(
+                            InteractionChannelDto.PHONE,
+                            client.getContactOverview(tenantId, actorId, created.contactId)?.interactions?.single()?.channel,
+                        )
+
+                        client.removeContactInteraction(
+                            tenantId,
+                            actorId,
+                            created.contactId,
+                            interaction.interactionId,
+                        )
+                        assertEquals(emptyList(), client.getContactOverview(tenantId, actorId, created.contactId)?.interactions)
                     }
                 }
             }

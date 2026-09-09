@@ -3,6 +3,7 @@ product: jvm/lib
 dependencies:
   - ../../utilities/ifx
   - ../../access/contact-access
+  - ../../access/engagement-access
   - ../authorization-engine
 
 test-dependencies:

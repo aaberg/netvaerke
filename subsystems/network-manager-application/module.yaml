@@ -3,6 +3,7 @@ product: jvm/app
 dependencies:
   - ../../utilities/ifx
   - ../../access/contact-access
+  - ../../access/engagement-access
   - ../../access/tenant-access
   - ../../businesslogic/authorization-engine
   - ../../businesslogic/network-manager

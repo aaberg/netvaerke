@@ -1,6 +1,7 @@
 package netvaerke.manager.network
 
 import java.util.UUID
+import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,6 +15,8 @@ import netvaerke.access.contact.ContactImage
 import netvaerke.access.contact.EmailAddress
 import netvaerke.access.contact.Note
 import netvaerke.access.contact.WorkInfo
+import netvaerke.access.engagement.EngagementAccess
+import netvaerke.access.engagement.Interaction
 import netvaerke.engine.authorization.AuthorizationEngine
 import netvaerke.engine.authorization.AuthorizationResponseDto
 import netvaerke.engine.authorization.Operation
@@ -43,7 +46,7 @@ class NetworkManagerImplTest {
                 ),
             )
         }
-        val manager = NetworkManagerImpl(AllowingAuthorizationEngine, contactAccess)
+        val manager = NetworkManagerImpl(AllowingAuthorizationEngine, contactAccess, RecordingEngagementAccess())
 
         assertEquals(
             TenantContactListItemDto(contactId, "Ada Lovelace", "ada@example.test", ContactImageDto("first-image")),
@@ -69,7 +72,7 @@ class NetworkManagerImplTest {
     @Test
     fun `denies mutations before contact access`() = runBlocking {
         val contactAccess = RecordingContactAccess()
-        val manager = NetworkManagerImpl(DenyingAuthorizationEngine, contactAccess)
+        val manager = NetworkManagerImpl(DenyingAuthorizationEngine, contactAccess, RecordingEngagementAccess())
 
         assertFailsWith<AuthorizationDeniedException> {
             manager.createNewContact(randomUuid(), randomUuid(), contactDetails())
@@ -83,13 +86,27 @@ class NetworkManagerImplTest {
         val tenantId = randomUuid()
         val actorId = randomUuid()
 
-        assertNull(NetworkManagerImpl(DenyingAuthorizationEngine, RecordingContactAccess()).getContact(tenantId, actorId, randomUuid()))
-        assertNull(NetworkManagerImpl(AllowingAuthorizationEngine, RecordingContactAccess()).getContact(tenantId, actorId, randomUuid()))
+        assertNull(
+            NetworkManagerImpl(DenyingAuthorizationEngine, RecordingContactAccess(), RecordingEngagementAccess())
+                .getContact(tenantId, actorId, randomUuid()),
+        )
+        assertNull(
+            NetworkManagerImpl(AllowingAuthorizationEngine, RecordingContactAccess(), RecordingEngagementAccess())
+                .getContact(tenantId, actorId, randomUuid()),
+        )
+        assertNull(
+            NetworkManagerImpl(DenyingAuthorizationEngine, RecordingContactAccess(), RecordingEngagementAccess())
+                .getContactOverview(tenantId, actorId, randomUuid()),
+        )
+        assertNull(
+            NetworkManagerImpl(AllowingAuthorizationEngine, RecordingContactAccess(), RecordingEngagementAccess())
+                .getContactOverview(tenantId, actorId, randomUuid()),
+        )
     }
 
     @Test
     fun `rejects multiple primary email addresses`() = runBlocking {
-        val manager = NetworkManagerImpl(AllowingAuthorizationEngine, RecordingContactAccess())
+        val manager = NetworkManagerImpl(AllowingAuthorizationEngine, RecordingContactAccess(), RecordingEngagementAccess())
 
         val failure = assertFailsWith<IllegalArgumentException> {
             manager.createNewContact(
@@ -116,7 +133,7 @@ class NetworkManagerImplTest {
                 Contact(contactId, "Ada Lovelace", listOf(ContactImage("former-key"), ContactImage("stale-key"))),
             )
         }
-        val manager = NetworkManagerImpl(AllowingAuthorizationEngine, contactAccess)
+        val manager = NetworkManagerImpl(AllowingAuthorizationEngine, contactAccess, RecordingEngagementAccess())
 
         val upload = manager.reserveContactImageUpload(tenantId, actorId, contactId)
         val formerImage = manager.setContactImage(tenantId, actorId, contactId, upload.fileKey)
@@ -128,7 +145,7 @@ class NetworkManagerImplTest {
 
     @Test
     fun `returns not found for missing contact mutations`() = runBlocking {
-        val manager = NetworkManagerImpl(AllowingAuthorizationEngine, RecordingContactAccess())
+        val manager = NetworkManagerImpl(AllowingAuthorizationEngine, RecordingContactAccess(), RecordingEngagementAccess())
 
         assertFailsWith<ContactNotFoundException> {
             manager.updateContact(randomUuid(), randomUuid(), randomUuid(), updateContactDetails())
@@ -138,6 +155,72 @@ class NetworkManagerImplTest {
         }
         Unit
     }
+    @Test
+    fun `manages contact interactions through the contact overview`() = runBlocking {
+        val tenantId = randomUuid()
+        val actorId = randomUuid()
+        val contactId = randomUuid()
+        val otherContactId = randomUuid()
+        val contactAccess = RecordingContactAccess().apply {
+            save(tenantId, Contact(contactId, "Ada Lovelace", emptyList()))
+            save(tenantId, Contact(otherContactId, "Grace Hopper", emptyList()))
+        }
+        val manager = NetworkManagerImpl(AllowingAuthorizationEngine, contactAccess, RecordingEngagementAccess())
+
+        val registered = manager.registerContactInteraction(
+            tenantId,
+            actorId,
+            contactId,
+            CreateContactInteractionDto(
+                channel = InteractionChannelDto.EMAIL,
+                notes = "Sent a follow-up.",
+                occurredAt = "2026-09-09T10:00:00Z",
+            ),
+        )
+
+        assertEquals(actorId, registered.recordedByUserId)
+        assertEquals("2026-09-09T10:00:00Z", registered.occurredAt)
+        assertEquals(
+            listOf(registered),
+            manager.getContactOverview(tenantId, actorId, contactId)?.interactions,
+        )
+
+        manager.updateContactInteraction(
+            tenantId,
+            actorId,
+            contactId,
+            registered.interactionId,
+            UpdateContactInteractionDto(
+                channel = InteractionChannelDto.PHONE,
+                notes = "Discussed the proposal.",
+                occurredAt = "2026-09-10T11:30:00Z",
+            ),
+        )
+
+        assertEquals(
+            InteractionChannelDto.PHONE,
+            manager.getContactOverview(tenantId, actorId, contactId)?.interactions?.single()?.channel,
+        )
+
+        val otherContactInteraction = manager.registerContactInteraction(
+            tenantId,
+            actorId,
+            otherContactId,
+            CreateContactInteractionDto(
+                channel = InteractionChannelDto.CHAT,
+                notes = null,
+                occurredAt = "2026-09-11T12:00:00Z",
+            ),
+        )
+        assertFailsWith<ContactInteractionNotFoundException> {
+            manager.removeContactInteraction(tenantId, actorId, contactId, otherContactInteraction.interactionId)
+        }
+
+        manager.removeContactInteraction(tenantId, actorId, contactId, registered.interactionId)
+
+        assertEquals(emptyList(), manager.getContactOverview(tenantId, actorId, contactId)?.interactions)
+    }
+
 }
 
 private object AllowingAuthorizationEngine : AuthorizationEngine {
@@ -178,6 +261,41 @@ private fun contactDetails(emails: List<EmailAddressDto> = emptyList()): CreateN
     workInfo = null,
     note = null,
 )
+
+private class RecordingEngagementAccess : EngagementAccess {
+    private val interactions = mutableMapOf<Pair<Uuid, Uuid>, Interaction>()
+
+    override suspend fun registerInteraction(tenantId: Uuid, interaction: Interaction): Boolean {
+        val key = tenantId to interaction.id
+        if (key in interactions) return false
+        interactions[key] = interaction.copy(createdAt = Instant.parse("2026-09-09T00:00:00Z"))
+        return true
+    }
+
+    override suspend fun updateInteraction(tenantId: Uuid, interaction: Interaction): Boolean {
+        val key = tenantId to interaction.id
+        val existing = interactions[key] ?: return false
+        interactions[key] = existing.copy(
+            channel = interaction.channel,
+            notes = interaction.notes,
+            occurredAt = interaction.occurredAt,
+        )
+        return true
+    }
+
+    override suspend fun deleteInteraction(tenantId: Uuid, interactionId: Uuid): Boolean =
+        interactions.remove(tenantId to interactionId) != null
+
+    override suspend fun getInteraction(tenantId: Uuid, interactionId: Uuid): Interaction? =
+        interactions[tenantId to interactionId]
+
+    override suspend fun getResourceInteractions(tenantId: Uuid, resourceId: Uuid): List<Interaction> =
+        interactions
+            .filterKeys { it.first == tenantId }
+            .values
+            .filter { it.resourceId == resourceId }
+            .sortedWith(compareByDescending<Interaction> { it.occurredAt }.thenByDescending { it.id.toString() })
+}
 
 private fun updateContactDetails(): UpdateContactDto = UpdateContactDto(
     name = "Ada Lovelace",

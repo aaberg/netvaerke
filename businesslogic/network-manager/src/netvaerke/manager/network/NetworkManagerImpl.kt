@@ -2,6 +2,8 @@ package netvaerke.manager.network
 
 import java.util.UUID
 import netvaerke.access.contact.ContactAccess
+import netvaerke.access.engagement.EngagementAccess
+import netvaerke.access.engagement.Interaction
 import netvaerke.access.contact.ContactImage
 import netvaerke.engine.authorization.AuthorizationEngine
 import netvaerke.engine.authorization.Operation
@@ -9,7 +11,8 @@ import kotlin.uuid.Uuid
 
 class NetworkManagerImpl(
     private val authorizer: AuthorizationEngine,
-    private val contactAccess: ContactAccess
+    private val contactAccess: ContactAccess,
+    private val engagementAccess: EngagementAccess,
 ) : NetworkManager {
 
     override suspend fun getTenantContacts(
@@ -27,6 +30,19 @@ class NetworkManagerImpl(
     ): TenantContactDto? {
         if (!authorizer.authorize(actorId, tenantId, Operation.READ_CONTACTS).authorized) return null
         return contactAccess.getContact(tenantId, contactId)?.toDto()
+    }
+
+    override suspend fun getContactOverview(
+        tenantId: Uuid,
+        actorId: Uuid,
+        contactId: Uuid,
+    ): ContactOverviewDto? {
+        if (!authorizer.authorize(actorId, tenantId, Operation.READ_CONTACTS).authorized) return null
+        val contact = contactAccess.getContact(tenantId, contactId) ?: return null
+        return ContactOverviewDto(
+            contact = contact.toDto(),
+            interactions = engagementAccess.getResourceInteractions(tenantId, contactId).map(Interaction::toDto),
+        )
     }
 
     override suspend fun createNewContact(
@@ -65,6 +81,48 @@ class NetworkManagerImpl(
         if (!contactAccess.deleteContact(tenantId, contactId)) throw ContactNotFoundException()
     }
 
+    override suspend fun registerContactInteraction(
+        tenantId: Uuid,
+        actorId: Uuid,
+        contactId: Uuid,
+        interaction: CreateContactInteractionDto,
+    ): ContactInteractionDto {
+        authorize(actorId, tenantId, Operation.UPDATE_CONTACTS)
+        findContact(tenantId, contactId)
+        val newInteraction = interaction.toInteraction(contactId, actorId, randomUuid())
+        check(engagementAccess.registerInteraction(tenantId, newInteraction)) { "Generated interaction ID already exists" }
+        return checkNotNull(engagementAccess.getInteraction(tenantId, newInteraction.id)).toDto()
+    }
+
+    override suspend fun updateContactInteraction(
+        tenantId: Uuid,
+        actorId: Uuid,
+        contactId: Uuid,
+        interactionId: Uuid,
+        interaction: UpdateContactInteractionDto,
+    ) {
+        authorize(actorId, tenantId, Operation.UPDATE_CONTACTS)
+        findContact(tenantId, contactId)
+        val existingInteraction = findContactInteraction(tenantId, contactId, interactionId)
+        if (!engagementAccess.updateInteraction(tenantId, existingInteraction.update(interaction))) {
+            throw ContactInteractionNotFoundException()
+        }
+    }
+
+    override suspend fun removeContactInteraction(
+        tenantId: Uuid,
+        actorId: Uuid,
+        contactId: Uuid,
+        interactionId: Uuid,
+    ) {
+        authorize(actorId, tenantId, Operation.UPDATE_CONTACTS)
+        findContact(tenantId, contactId)
+        findContactInteraction(tenantId, contactId, interactionId)
+        if (!engagementAccess.deleteInteraction(tenantId, interactionId)) {
+            throw ContactInteractionNotFoundException()
+        }
+    }
+
     override suspend fun reserveContactImageUpload(
         tenantId: Uuid,
         actorId: Uuid,
@@ -101,6 +159,14 @@ class NetworkManagerImpl(
     private suspend fun findContact(tenantId: Uuid, contactId: Uuid) =
         contactAccess.getContact(tenantId, contactId) ?: throw ContactNotFoundException()
 
+    private suspend fun findContactInteraction(
+        tenantId: Uuid,
+        contactId: Uuid,
+        interactionId: Uuid,
+    ): Interaction = engagementAccess.getInteraction(tenantId, interactionId)
+        ?.takeIf { it.resourceId == contactId }
+        ?: throw ContactInteractionNotFoundException()
+
     private suspend fun saveContact(tenantId: Uuid, contact: netvaerke.access.contact.Contact) {
         if (!contactAccess.saveContact(tenantId, contact)) throw ContactNotFoundException()
     }
@@ -109,6 +175,8 @@ class NetworkManagerImpl(
 class AuthorizationDeniedException : SecurityException("Actor is not authorized for this operation")
 
 class ContactNotFoundException : NoSuchElementException("Contact not found")
+
+class ContactInteractionNotFoundException : NoSuchElementException("Contact interaction not found")
 
 private fun CreateNewContactDto.validateDetailPolicy() {
     require(emails.count { it.isPrimary } <= 1) { "A contact may have at most one primary email address" }
