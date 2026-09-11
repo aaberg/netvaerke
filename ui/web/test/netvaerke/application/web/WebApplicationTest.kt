@@ -23,13 +23,18 @@ import kotlin.uuid.Uuid
 import netvaerke.manager.network.ContactImageDto
 import netvaerke.manager.network.ContactImageUpdateDto
 import netvaerke.manager.network.ContactImageUploadDto
+import netvaerke.manager.network.ContactInteractionDto
+import netvaerke.manager.network.ContactOverviewDto
+import netvaerke.manager.network.CreateContactInteractionDto
 import netvaerke.manager.network.CreateNewContactDto
 import netvaerke.manager.network.EmailAddressDto
+import netvaerke.manager.network.InteractionChannelDto
 import netvaerke.manager.network.NetworkManager
 import netvaerke.manager.network.NoteDto
 import netvaerke.manager.network.PhoneNumberDto
 import netvaerke.manager.network.TenantContactDto
 import netvaerke.manager.network.TenantContactListItemDto
+import netvaerke.manager.network.UpdateContactInteractionDto
 import netvaerke.manager.network.UpdateContactDto
 import netvaerke.manager.network.WorkInfoDto
 import netvaerke.manager.membership.GetProfileRequest
@@ -73,6 +78,125 @@ class WebApplicationTest {
         assertEquals(USER_ID, manager.lastActorId)
     }
 
+
+    @Test
+    fun `opens a contact overview while retaining a direct edit link`() = testApplication {
+        val manager = RecordingNetworkManager().apply {
+            contacts = listOf(TenantContactListItemDto(CONTACT_ID, "Ada Lovelace", "ada@example.test", null))
+            overview = ContactOverviewDto(
+                contact = TenantContactDto(
+                    contactId = CONTACT_ID,
+                    name = "Ada Lovelace",
+                    emails = listOf(EmailAddressDto("ada@example.test", isPrimary = true, label = "Work")),
+                    phoneNumbers = emptyList(),
+                    workInfo = WorkInfoDto("Programmer", "Analytical Engine"),
+                    note = NoteDto("Met at the salon."),
+                    image = null,
+                ),
+                interactions = listOf(
+                    ContactInteractionDto(
+                        interactionId = INTERACTION_ID,
+                        recordedByUserId = USER_ID,
+                        channel = InteractionChannelDto.EMAIL,
+                        notes = "Sent an introduction.",
+                        occurredAt = "2025-01-02T15:04:05Z",
+                        createdAt = "2025-01-02T15:05:00Z",
+                    ),
+                ),
+            )
+        }
+        application {
+            configureWebApplication(config(), membershipManager(), manager, RecordingFileStorage(), authenticatedSession())
+        }
+
+        val dashboard = client.get("/dashboard")
+        val overview = client.get("/contacts/$CONTACT_ID")
+
+        assertEquals(HttpStatusCode.OK, dashboard.status)
+        assertTrue(dashboard.bodyAsText().contains("href=\"/contacts/$CONTACT_ID\""))
+        assertTrue(dashboard.bodyAsText().contains("href=\"/contacts/$CONTACT_ID/edit\""))
+        assertEquals(HttpStatusCode.OK, overview.status)
+        assertTrue(overview.bodyAsText().contains("Met at the salon."))
+        assertTrue(overview.bodyAsText().contains("Sent an introduction."))
+        assertTrue(overview.bodyAsText().contains("Record an interaction"))
+        assertTrue(overview.bodyAsText().contains("interaction-icon-email"))
+        assertTrue(overview.bodyAsText().contains("data-interaction-local-time"))
+        assertTrue(overview.bodyAsText().contains("<details class=\"new-interaction\">"))
+        assertTrue(overview.bodyAsText().contains("new-interaction-trigger"))
+        assertEquals(2, "data-interaction-cancel".toRegex().findAll(overview.bodyAsText()).count())
+        assertTrue(overview.bodyAsText().contains("data-interaction-remove"))
+        assertTrue(overview.bodyAsText().contains("aria-label=\"Remove interaction\""))
+    }
+
+    @Test
+    fun `registers updates and removes contact interactions from the overview`() = testApplication {
+        val manager = RecordingNetworkManager().apply {
+            overview = ContactOverviewDto(
+                contact = TenantContactDto(CONTACT_ID, "Ada Lovelace", emptyList(), emptyList(), null, null, null),
+                interactions = emptyList(),
+            )
+        }
+        application {
+            configureWebApplication(config(), membershipManager(), manager, RecordingFileStorage(), authenticatedSession())
+        }
+
+        val form = client.get("/contacts/$CONTACT_ID")
+        val csrfToken = assertNotNull(
+            Regex("name=\"csrfToken\" value=\"([^\"]+)\"").find(form.bodyAsText())?.groupValues?.get(1),
+        )
+        val createResponse = client.post("/contacts/$CONTACT_ID/interactions") {
+            cookie("netvaerke_csrf", csrfToken)
+            setBody(
+                FormDataContent(
+                    Parameters.build {
+                        append("csrfToken", csrfToken)
+                        append("channel", "PHONE")
+                        append("notes", "Talked about the project.")
+                        append("occurredAt", "2025-01-02T15:04:05Z")
+                    },
+                ),
+            )
+        }
+        val updateResponse = client.post("/contacts/$CONTACT_ID/interactions/$INTERACTION_ID") {
+            cookie("netvaerke_csrf", csrfToken)
+            setBody(
+                FormDataContent(
+                    Parameters.build {
+                        append("csrfToken", csrfToken)
+                        append("channel", "CHAT")
+                        append("notes", "Agreed on next steps.")
+                        append("occurredAt", "2025-01-03T15:04:05Z")
+                    },
+                ),
+            )
+        }
+        val removeResponse = client.post("/contacts/$CONTACT_ID/interactions/$INTERACTION_ID/remove") {
+            cookie("netvaerke_csrf", csrfToken)
+            setBody(FormDataContent(Parameters.build { append("csrfToken", csrfToken) }))
+        }
+
+        assertEquals(HttpStatusCode.Found, createResponse.status)
+        assertEquals(HttpStatusCode.Found, updateResponse.status)
+        assertEquals(HttpStatusCode.Found, removeResponse.status)
+        assertEquals(
+            CreateContactInteractionDto(
+                InteractionChannelDto.PHONE,
+                "Talked about the project.",
+                "2025-01-02T15:04:05Z",
+            ),
+            manager.createdInteraction,
+        )
+        assertEquals(
+            UpdateContactInteractionDto(
+                InteractionChannelDto.CHAT,
+                "Agreed on next steps.",
+                "2025-01-03T15:04:05Z",
+            ),
+            manager.updatedInteraction,
+        )
+        assertEquals(CONTACT_ID, manager.interactionContactId)
+        assertEquals(INTERACTION_ID, manager.removedInteractionId)
+    }
     @Test
     fun `creates a contact from the form`() = testApplication {
         val manager = RecordingNetworkManager()
@@ -300,8 +424,13 @@ class WebApplicationTest {
     private class RecordingNetworkManager : NetworkManager {
         var contacts: List<TenantContactListItemDto> = emptyList()
         var contact: TenantContactDto? = null
+        var overview: ContactOverviewDto? = null
         var createdContact: CreateNewContactDto? = null
         var updatedContact: UpdateContactDto? = null
+        var createdInteraction: CreateContactInteractionDto? = null
+        var updatedInteraction: UpdateContactInteractionDto? = null
+        var interactionContactId: Uuid? = null
+        var removedInteractionId: Uuid? = null
         var reservedImageKey: String? = null
         var setImageFileKey: String? = null
         var previousImageFileKey: String? = null
@@ -318,6 +447,12 @@ class WebApplicationTest {
             lastTenantId = tenantId
             lastActorId = actorId
             return contact
+        }
+
+        override suspend fun getContactOverview(tenantId: Uuid, actorId: Uuid, contactId: Uuid): ContactOverviewDto? {
+            lastTenantId = tenantId
+            lastActorId = actorId
+            return overview
         }
 
         override suspend fun createNewContact(
@@ -351,6 +486,51 @@ class WebApplicationTest {
         }
 
         override suspend fun deleteContact(tenantId: Uuid, actorId: Uuid, contactId: Uuid) = Unit
+
+        override suspend fun registerContactInteraction(
+            tenantId: Uuid,
+            actorId: Uuid,
+            contactId: Uuid,
+            interaction: CreateContactInteractionDto,
+        ): ContactInteractionDto {
+            lastTenantId = tenantId
+            lastActorId = actorId
+            interactionContactId = contactId
+            createdInteraction = interaction
+            return ContactInteractionDto(
+                interactionId = INTERACTION_ID,
+                recordedByUserId = actorId,
+                channel = interaction.channel,
+                notes = interaction.notes,
+                occurredAt = interaction.occurredAt,
+                createdAt = interaction.occurredAt,
+            )
+        }
+
+        override suspend fun updateContactInteraction(
+            tenantId: Uuid,
+            actorId: Uuid,
+            contactId: Uuid,
+            interactionId: Uuid,
+            interaction: UpdateContactInteractionDto,
+        ) {
+            lastTenantId = tenantId
+            lastActorId = actorId
+            interactionContactId = contactId
+            updatedInteraction = interaction
+        }
+
+        override suspend fun removeContactInteraction(
+            tenantId: Uuid,
+            actorId: Uuid,
+            contactId: Uuid,
+            interactionId: Uuid,
+        ) {
+            lastTenantId = tenantId
+            lastActorId = actorId
+            interactionContactId = contactId
+            removedInteractionId = interactionId
+        }
 
         override suspend fun reserveContactImageUpload(
             tenantId: Uuid,
@@ -411,5 +591,6 @@ class WebApplicationTest {
         val PERSONAL_TENANT_ID: Uuid = Uuid.parse("00000000-0000-0000-0000-000000000002")
         val ORGANIZATION_TENANT_ID: Uuid = Uuid.parse("00000000-0000-0000-0000-000000000003")
         val CONTACT_ID: Uuid = Uuid.parse("00000000-0000-0000-0000-000000000004")
+        val INTERACTION_ID: Uuid = Uuid.parse("00000000-0000-0000-0000-000000000005")
     }
 }

@@ -19,10 +19,18 @@ import io.ktor.server.routing.routing
 import io.ktor.server.http.content.staticResources
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.Base64
 import netvaerke.manager.network.AuthorizationDeniedException
+import netvaerke.manager.network.ContactInteractionDto
+import netvaerke.manager.network.ContactInteractionNotFoundException
 import netvaerke.manager.network.ContactNotFoundException
+import netvaerke.manager.network.ContactOverviewDto
+import netvaerke.manager.network.EmailAddressDto
 import netvaerke.manager.network.NetworkManager
+import netvaerke.manager.network.PhoneNumberDto
 import netvaerke.manager.network.TenantContactListItemDto
 import netvaerke.ifx.IfxRemoteException
 import netvaerke.manager.membership.GetProfileRequest
@@ -157,6 +165,82 @@ internal fun Application.configureWebApplication(
                 }
             }
             call.respondRedirect("/dashboard")
+        }
+
+        get("/contacts/{contactId}") {
+            val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@get
+            val contactId = call.contactIdOrNotFound() ?: return@get
+            call.respondContactOverview(config, networkManager, fileStorage, context, contactId)
+        }
+
+        post("/contacts/{contactId}/interactions") {
+            val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@post
+            val contactId = call.contactIdOrNotFound() ?: return@post
+            val parameters = call.receiveParameters()
+            if (!call.hasValidCsrfToken(parameters["csrfToken"])) {
+                call.respondText("Your form expired. Refresh the page and try again.", status = HttpStatusCode.Forbidden)
+                return@post
+            }
+
+            val form = parameters.toContactInteractionForm()
+            val validationError = form.validationError()
+            if (validationError != null) {
+                call.respondContactOverview(config, networkManager, fileStorage, context, contactId, form, validationError)
+                return@post
+            }
+
+            try {
+                networkManager.registerContactInteraction(context.tenantId, context.user.id, contactId, form.toCreateDto())
+            } catch (failure: Exception) {
+                call.respondContactFailure(failure)
+                return@post
+            }
+            call.respondRedirect("/contacts/$contactId")
+        }
+
+        post("/contacts/{contactId}/interactions/{interactionId}") {
+            val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@post
+            val contactId = call.contactIdOrNotFound() ?: return@post
+            val interactionId = call.interactionIdOrNotFound() ?: return@post
+            val parameters = call.receiveParameters()
+            if (!call.hasValidCsrfToken(parameters["csrfToken"])) {
+                call.respondText("Your form expired. Refresh the page and try again.", status = HttpStatusCode.Forbidden)
+                return@post
+            }
+
+            val form = parameters.toContactInteractionForm()
+            val validationError = form.validationError()
+            if (validationError != null) {
+                call.respondContactOverview(config, networkManager, fileStorage, context, contactId, form, validationError)
+                return@post
+            }
+
+            try {
+                networkManager.updateContactInteraction(context.tenantId, context.user.id, contactId, interactionId, form.toUpdateDto())
+            } catch (failure: Exception) {
+                call.respondContactFailure(failure)
+                return@post
+            }
+            call.respondRedirect("/contacts/$contactId")
+        }
+
+        post("/contacts/{contactId}/interactions/{interactionId}/remove") {
+            val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@post
+            val contactId = call.contactIdOrNotFound() ?: return@post
+            val interactionId = call.interactionIdOrNotFound() ?: return@post
+            val parameters = call.receiveParameters()
+            if (!call.hasValidCsrfToken(parameters["csrfToken"])) {
+                call.respondText("Your form expired. Refresh the page and try again.", status = HttpStatusCode.Forbidden)
+                return@post
+            }
+
+            try {
+                networkManager.removeContactInteraction(context.tenantId, context.user.id, contactId, interactionId)
+            } catch (failure: Exception) {
+                call.respondContactFailure(failure)
+                return@post
+            }
+            call.respondRedirect("/contacts/$contactId")
         }
 
         get("/contacts/{contactId}/edit") {
@@ -330,6 +414,39 @@ private suspend fun ApplicationCall.respondContactForm(
     )
 }
 
+private suspend fun ApplicationCall.respondContactOverview(
+    config: ApplicationConfig,
+    networkManager: NetworkManager,
+    fileStorage: FileStorage,
+    context: PersonalTenantContext,
+    contactId: kotlin.uuid.Uuid,
+    newInteraction: ContactInteractionForm = ContactInteractionForm(),
+    error: String? = null,
+) {
+    val overview = try {
+        networkManager.getContactOverview(context.tenantId, context.user.id, contactId)
+    } catch (failure: Exception) {
+        respondContactFailure(failure)
+        return
+    } ?: run {
+        contactNotFound()
+        return
+    }
+    respondPage(
+        "contact-overview.ftl",
+        mapOf(
+            "contact" to overview.toContactOverviewContact(fileStorage, config.fileStorageBucket),
+            "interactions" to overview.interactions.map(ContactInteractionOverview::from),
+            "newInteraction" to newInteraction,
+            "channels" to interactionChannelOptions(),
+            "error" to error,
+            "csrfToken" to csrfToken(config.secureCookies),
+            "hankoApiUrl" to config.hankoApiUrl,
+            "hankoCookieDomain" to config.hankoCookieDomain,
+        ),
+    )
+}
+
 private fun imageUploadErrorMessage(imageUploadError: Boolean): String? =
     if (imageUploadError) "Your contact was saved, but its photo could not be uploaded. Please try again." else null
 
@@ -346,6 +463,58 @@ private fun TenantContactListItemDto.toContactListItem(fileStorage: FileStorage,
     primaryEmailAddress = primaryEmailAddress,
     imageUrl = image?.fileKey?.let { fileStorage.createImageUrl(bucket, it) },
 )
+
+internal data class ContactOverviewContact(
+    val contactId: kotlin.uuid.Uuid,
+    val name: String,
+    val emails: List<EmailAddressDto>,
+    val phoneNumbers: List<PhoneNumberDto>,
+    val workTitle: String?,
+    val workOrganization: String?,
+    val note: String?,
+    val imageUrl: String?,
+)
+
+internal data class ContactInteractionOverview(
+    val interactionId: kotlin.uuid.Uuid,
+    val channel: String,
+    val channelLabel: String,
+    val notes: String?,
+    val occurredAt: String,
+    val occurredAtDisplay: String,
+    val occurredAtInput: String,
+) {
+    companion object {
+        fun from(interaction: ContactInteractionDto): ContactInteractionOverview {
+            val form = interaction.toContactInteractionForm()
+            return ContactInteractionOverview(
+                interactionId = interaction.interactionId,
+                channel = interaction.channel.name,
+                channelLabel = interaction.channel.displayName(),
+                notes = interaction.notes,
+                occurredAt = interaction.occurredAt,
+                occurredAtDisplay = interaction.occurredAt.toInteractionTimestamp(),
+                occurredAtInput = form.occurredAtInput,
+            )
+        }
+    }
+}
+
+private fun ContactOverviewDto.toContactOverviewContact(fileStorage: FileStorage, bucket: String): ContactOverviewContact =
+    ContactOverviewContact(
+        contactId = contact.contactId,
+        name = contact.name,
+        emails = contact.emails,
+        phoneNumbers = contact.phoneNumbers,
+        workTitle = contact.workInfo?.title,
+        workOrganization = contact.workInfo?.organization,
+        note = contact.note?.value,
+        imageUrl = contact.image?.fileKey?.let { fileStorage.createImageUrl(bucket, it) },
+    )
+
+private fun String.toInteractionTimestamp(): String = runCatching {
+    Instant.parse(this).atOffset(ZoneOffset.UTC).format(INTERACTION_TIMESTAMP_FORMATTER)
+}.getOrDefault(this)
 
 private fun FileStorage.createImageUrl(bucket: String, fileKey: String): String? =
     runCatching { createGetUrl(bucket, fileKey, 1.hours) }.getOrNull()
@@ -402,21 +571,42 @@ private suspend fun ApplicationCall.contactIdOrNotFound(): kotlin.uuid.Uuid? =
         return null
     }
 
+private suspend fun ApplicationCall.interactionIdOrNotFound(): kotlin.uuid.Uuid? =
+    runCatching { kotlin.uuid.Uuid.parse(parameters["interactionId"].orEmpty()) }.getOrElse {
+        interactionNotFound()
+        return null
+    }
+
 private suspend fun ApplicationCall.respondContactFailure(failure: Exception) {
-    when ((failure as? IfxRemoteException)?.remoteType) {
-        AuthorizationDeniedException::class.qualifiedName -> respondText(
+    when {
+        failure is AuthorizationDeniedException -> respondText(
             "You do not have permission to manage these contacts.",
             status = HttpStatusCode.Forbidden,
         )
 
-        ContactNotFoundException::class.qualifiedName -> contactNotFound()
-        else -> serviceUnavailable()
+        failure is ContactNotFoundException -> contactNotFound()
+        failure is ContactInteractionNotFoundException -> interactionNotFound()
+        else -> when ((failure as? IfxRemoteException)?.remoteType) {
+            AuthorizationDeniedException::class.qualifiedName -> respondText(
+                "You do not have permission to manage these contacts.",
+                status = HttpStatusCode.Forbidden,
+            )
+
+            ContactNotFoundException::class.qualifiedName -> contactNotFound()
+            ContactInteractionNotFoundException::class.qualifiedName -> interactionNotFound()
+            else -> serviceUnavailable()
+        }
     }
 }
 
 private suspend fun ApplicationCall.contactNotFound() {
     respondText("Contact not found.", status = HttpStatusCode.NotFound)
 }
+
+private suspend fun ApplicationCall.interactionNotFound() {
+    respondText("Interaction not found.", status = HttpStatusCode.NotFound)
+}
+
 
 private suspend fun ApplicationCall.respondOnboarding(
     config: ApplicationConfig,
@@ -483,3 +673,5 @@ private fun validateProfileDetails(name: String, email: String): String? =
 private const val CSRF_COOKIE_NAME = "netvaerke_csrf"
 
 private val EMAIL_PATTERN = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
+
+private val INTERACTION_TIMESTAMP_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM uuuu, HH:mm 'UTC'")

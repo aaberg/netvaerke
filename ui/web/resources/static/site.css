@@ -147,6 +147,8 @@ input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .button-full { width: 100%; margin-top: 20px; min-height: 38px; }
 .button-quiet { border-color: transparent; box-shadow: none; }
 .button-quiet:hover { border-color: var(--border); }
+.button-danger { border-color: rgba(207, 34, 46, 0.4); background: var(--danger-surface); color: var(--danger-ink); }
+.button-danger:hover { border-color: var(--danger); background: var(--danger-surface); }
 .theme-toggle { width: 32px; padding: 5px; }
 .theme-icon { width: 18px; height: 18px; background: currentColor; }
 .theme-moon { mask: url("/assets/icons/moon.svg") center / contain no-repeat; }
@@ -306,9 +308,10 @@ hanko-auth::part(primary-button) { font-weight: 600; }
 .empty-state .button { margin-top: 24px; }
 
 .contact-list { overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
-.contact-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 15px 18px; color: var(--ink); text-decoration: none; }
+.contact-row { display: flex; align-items: center; gap: 14px; padding: 8px 10px 8px 18px; }
 .contact-row + .contact-row { border-top: 1px solid var(--border-subtle); }
 .contact-row:hover { background: var(--surface-hover); }
+.contact-row-link { display: grid; flex: 1; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 14px; min-width: 0; color: var(--ink); text-decoration: none; }
 .contact-avatar { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--avatar-border); border-radius: 50%; background: var(--avatar-surface); color: var(--avatar-ink); font-size: 15px; font-weight: 700; }
 .contact-photo { object-fit: cover; background: var(--canvas); }
 .contact-summary { display: grid; gap: 3px; min-width: 0; }
@@ -346,6 +349,76 @@ hanko-auth::part(primary-button) { font-weight: 600; }
 .remove-photo input { width: auto; min-height: auto; margin-right: 5px; }
 .contact-form-actions { display: flex; justify-content: end; gap: 9px; padding-top: 4px; border-top: 1px solid var(--border-subtle); }
 
+.contact-overview-main { width: min(900px, calc(100% - 40px)); margin: 52px auto 80px; }
+.contact-overview-card, .interaction-create-card, .interaction-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    box-shadow: 0 8px 24px var(--card-shadow);
+}
+.contact-overview-card { padding: clamp(24px, 5vw, 38px); }
+.contact-overview-heading { display: grid; grid-template-columns: 80px minmax(0, 1fr) auto; align-items: center; gap: 20px; }
+.contact-overview-avatar { width: 80px; height: 80px; display: grid; place-items: center; border: 1px solid var(--avatar-border); border-radius: 50%; background: var(--avatar-surface); color: var(--avatar-ink); font-size: 30px; font-weight: 700; }
+.contact-overview-heading .eyebrow { margin-bottom: 8px; }
+.contact-overview-heading h1 { margin-bottom: 6px; font-size: clamp(30px, 5vw, 44px); letter-spacing: -0.04em; }
+.contact-work { margin-bottom: 0; color: var(--muted); line-height: 1.5; }
+.contact-overview-edit { align-self: start; }
+.contact-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 40px; margin-top: 34px; padding-top: 28px; border-top: 1px solid var(--border-subtle); }
+.contact-details h2 { margin-bottom: 10px; font-size: 14px; }
+.contact-details ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.contact-details li { color: var(--muted); font-size: 14px; line-height: 1.45; }
+.contact-details li a { color: var(--blue); text-decoration: none; }
+.contact-details li a:hover { text-decoration: underline; }
+.contact-details li span { margin-left: 5px; color: var(--muted); font-size: 12px; }
+.contact-note { grid-column: 1 / -1; }
+.contact-note p { max-width: 680px; margin-bottom: 0; color: var(--muted); line-height: 1.55; white-space: pre-wrap; }
+.interactions-section { margin-top: 52px; }
+.interactions-heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 20px; }
+.interactions-heading .eyebrow { margin-bottom: 8px; }
+.interactions-heading h2 { margin-bottom: 0; font-size: 26px; letter-spacing: -0.03em; }
+.new-interaction > summary { list-style: none; cursor: pointer; }
+.new-interaction > summary::-webkit-details-marker { display: none; }
+.new-interaction[open] .new-interaction-trigger { display: none; }
+.interaction-create-card { padding: 24px; }
+.interaction-create-card h3 { margin: 0 0 18px; font-size: 17px; }
+.interaction-create-card form, .interaction-edit form { display: grid; gap: 14px; }
+.interaction-form-fields { display: grid; grid-template-columns: minmax(150px, 0.7fr) minmax(180px, 1fr); gap: 14px; }
+.interaction-form-fields label, .interaction-notes { display: grid; gap: 7px; color: var(--ink); font-size: 14px; font-weight: 650; }
+.interaction-form-fields input, .interaction-form-fields select, .interaction-notes textarea {
+    width: 100%;
+    min-height: 36px;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 20px;
+}
+.interaction-notes textarea { min-height: 86px; resize: vertical; }
+.interaction-actions { display: flex; justify-content: end; gap: 9px; }
+.interaction-remove-button { width: 36px; padding: 7px; }
+.interaction-remove-icon { display: block; width: 20px; height: 20px; background: currentColor; mask: url("/assets/icons/bin.svg") center / contain no-repeat; -webkit-mask: url("/assets/icons/bin.svg") center / contain no-repeat; }
+.interaction-empty { margin: 20px 0 0; padding: 26px; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); text-align: center; }
+.interaction-list { display: grid; gap: 12px; margin: 20px 0 0; padding: 0; list-style: none; }
+.interaction-card { padding: 20px 22px; box-shadow: none; }
+.interaction-summary { display: grid; gap: 10px; }
+.interaction-summary-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.interaction-channel { display: inline-flex; align-items: center; gap: 8px; }
+.interaction-icon { width: 20px; height: 20px; flex: 0 0 20px; background: var(--blue); }
+.interaction-icon-phone { mask: url("/assets/icons/phone.svg") center / contain no-repeat; -webkit-mask: url("/assets/icons/phone.svg") center / contain no-repeat; }
+.interaction-icon-email { mask: url("/assets/icons/email.svg") center / contain no-repeat; -webkit-mask: url("/assets/icons/email.svg") center / contain no-repeat; }
+.interaction-icon-text { mask: url("/assets/icons/text.svg") center / contain no-repeat; -webkit-mask: url("/assets/icons/text.svg") center / contain no-repeat; }
+.interaction-icon-chat { mask: url("/assets/icons/chat.svg") center / contain no-repeat; -webkit-mask: url("/assets/icons/chat.svg") center / contain no-repeat; }
+.interaction-icon-in-person { mask: url("/assets/icons/in-person.svg") center / contain no-repeat; -webkit-mask: url("/assets/icons/in-person.svg") center / contain no-repeat; }
+.interaction-summary strong { font-size: 16px; }
+.interaction-summary time { color: var(--muted); font-size: 13px; }
+.interaction-summary p { margin-bottom: 0; color: var(--muted); line-height: 1.5; white-space: pre-wrap; }
+.interaction-edit { margin-top: 16px; }
+.interaction-edit summary { color: var(--blue); cursor: pointer; font-size: 14px; font-weight: 550; }
+.interaction-edit form { margin-top: 16px; }
 @media (max-width: 680px) {
     .site-header { padding: 12px 20px; }
     .hero { padding-top: 80px; }
@@ -361,8 +434,16 @@ hanko-auth::part(primary-button) { font-weight: 600; }
     .empty-state { padding: 30px 24px; }
     .account-summary > span { display: none; }
     .dashboard-title { align-items: start; }
-    .contact-row { padding: 14px; }
-    .contact-edit { display: none; }
+    .contact-row { padding: 8px 10px 8px 14px; }
+    .contact-overview-main { margin-top: 32px; }
+    .contact-overview-heading { grid-template-columns: 64px minmax(0, 1fr); gap: 14px; }
+    .contact-overview-avatar { width: 64px; height: 64px; font-size: 24px; }
+    .contact-overview-edit { grid-column: 1 / -1; justify-self: start; }
+    .contact-details { grid-template-columns: 1fr; gap: 22px; }
+    .contact-note { grid-column: auto; }
+    .interaction-form-fields { grid-template-columns: 1fr; }
+    .interaction-card { padding: 18px; }
+    .interaction-summary-heading { align-items: start; flex-direction: column; gap: 4px; }
     .contact-form-main { margin-top: 32px; }
     .contact-form-card { padding: 22px; }
     .detail-row { grid-template-columns: 1fr 1fr; }

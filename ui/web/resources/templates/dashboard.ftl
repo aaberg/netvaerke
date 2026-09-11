@@ -44,22 +44,24 @@
         <#else>
             <section class="contact-list" aria-label="Contacts">
                 <#list contacts as contact>
-                    <a class="contact-row" href="/contacts/${contact.contactId?html}/edit">
-                        <#if contact.imageUrl??>
-                            <img class="contact-avatar contact-photo" src="${contact.imageUrl?html}" alt="">
-                        <#else>
-                            <span class="contact-avatar" aria-hidden="true"><#if contact.name?has_content>${contact.name?substring(0, 1)?upper_case?html}<#else>?</#if></span>
-                        </#if>
-                        <span class="contact-summary">
-                            <strong>${contact.name?html}</strong>
-                            <#if contact.primaryEmailAddress??>
-                                <span>${contact.primaryEmailAddress?html}</span>
+                    <article class="contact-row">
+                        <a class="contact-row-link" href="/contacts/${contact.contactId?html}">
+                            <#if contact.imageUrl??>
+                                <img class="contact-avatar contact-photo" src="${contact.imageUrl?html}" alt="">
                             <#else>
-                                <span>No email address</span>
+                                <span class="contact-avatar" aria-hidden="true"><#if contact.name?has_content>${contact.name?substring(0, 1)?upper_case?html}<#else>?</#if></span>
                             </#if>
-                        </span>
-                        <span class="contact-edit">Edit</span>
-                    </a>
+                            <span class="contact-summary">
+                                <strong>${contact.name?html}</strong>
+                                <#if contact.primaryEmailAddress??>
+                                    <span>${contact.primaryEmailAddress?html}</span>
+                                <#else>
+                                    <span>No email address</span>
+                                </#if>
+                            </span>
+                        </a>
+                        <a class="button button-quiet contact-edit" href="/contacts/${contact.contactId?html}/edit">Edit</a>
+                    </article>
                 </#list>
             </section>
         </#if>
