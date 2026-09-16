@@ -1,3 +1,5 @@
+-- changeset engagement:2
+
 CREATE TABLE engagement.follow_up_rule (
     id UUID PRIMARY KEY,
     tenant UUID NOT NULL,
