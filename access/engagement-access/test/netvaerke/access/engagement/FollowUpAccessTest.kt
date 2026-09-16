@@ -1,4 +1,4 @@
-package netvaerke.access.engagement.repository
+package netvaerke.access.engagement
 
 import java.time.LocalDate
 import javax.sql.DataSource
@@ -10,20 +10,11 @@ import kotlin.test.assertNull
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.runBlocking
-import netvaerke.access.engagement.CancelFollowUpResult
-import netvaerke.access.engagement.ChangeFollowUpCadenceResult
-import netvaerke.access.engagement.CompleteFollowUpResult
-import netvaerke.access.engagement.EngagementAccess
-import netvaerke.access.engagement.EngagementAccessImpl
-import netvaerke.access.engagement.FollowUpCadence
-import netvaerke.access.engagement.FollowUpIntervalUnit
-import netvaerke.access.engagement.FollowUpSchedule
-import netvaerke.access.engagement.FollowUpStatus
-import netvaerke.access.engagement.RegisterFollowUp
-import netvaerke.access.engagement.RegisterFollowUpResult
-import netvaerke.access.engagement.RescheduleFollowUpResult
+import netvaerke.access.engagement.repository.EngagementTestDatabase
+import netvaerke.access.engagement.repository.FollowUpRepository
+import netvaerke.access.engagement.repository.InteractionRepository
 
-class FollowUpRepositoryTest {
+class FollowUpAccessTest {
     private val dataSource: DataSource
         get() = EngagementTestDatabase.dataSource
 
