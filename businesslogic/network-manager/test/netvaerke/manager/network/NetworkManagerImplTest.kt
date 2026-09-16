@@ -1,22 +1,31 @@
 package netvaerke.manager.network
 
-import java.util.UUID
 import java.time.Instant
-import kotlinx.coroutines.runBlocking
+import java.time.LocalDate
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.runBlocking
 import netvaerke.access.contact.Contact
 import netvaerke.access.contact.ContactAccess
 import netvaerke.access.contact.ContactImage
 import netvaerke.access.contact.EmailAddress
 import netvaerke.access.contact.Note
 import netvaerke.access.contact.WorkInfo
+import netvaerke.access.engagement.CancelFollowUpResult
+import netvaerke.access.engagement.ChangeFollowUpCadenceResult
+import netvaerke.access.engagement.CompleteFollowUpResult
 import netvaerke.access.engagement.EngagementAccess
+import netvaerke.access.engagement.FollowUp
+import netvaerke.access.engagement.FollowUpCadence
 import netvaerke.access.engagement.Interaction
+import netvaerke.access.engagement.RegisterFollowUp
+import netvaerke.access.engagement.RegisterFollowUpResult
+import netvaerke.access.engagement.RescheduleFollowUpResult
 import netvaerke.engine.authorization.AuthorizationEngine
 import netvaerke.engine.authorization.AuthorizationResponseDto
 import netvaerke.engine.authorization.Operation
@@ -295,6 +304,43 @@ private class RecordingEngagementAccess : EngagementAccess {
             .values
             .filter { it.resourceId == resourceId }
             .sortedWith(compareByDescending<Interaction> { it.occurredAt }.thenByDescending { it.id.toString() })
+
+    override suspend fun registerFollowUp(
+        tenantId: Uuid,
+        followUp: RegisterFollowUp,
+    ): RegisterFollowUpResult = error("Follow-ups are not used by these tests")
+
+    override suspend fun getFollowUp(tenantId: Uuid, followUpId: Uuid): FollowUp? =
+        error("Follow-ups are not used by these tests")
+
+    override suspend fun getResourceFollowUps(tenantId: Uuid, resourceId: Uuid): List<FollowUp> =
+        error("Follow-ups are not used by these tests")
+
+    override suspend fun getOpenFollowUpsDueBy(tenantId: Uuid, dueOn: LocalDate): List<FollowUp> =
+        error("Follow-ups are not used by these tests")
+
+    override suspend fun rescheduleFollowUp(
+        tenantId: Uuid,
+        followUpId: Uuid,
+        dueOn: LocalDate,
+    ): RescheduleFollowUpResult = error("Follow-ups are not used by these tests")
+
+    override suspend fun changeFollowUpCadence(
+        tenantId: Uuid,
+        followUpId: Uuid,
+        cadence: FollowUpCadence,
+    ): ChangeFollowUpCadenceResult = error("Follow-ups are not used by these tests")
+
+    override suspend fun completeFollowUp(
+        tenantId: Uuid,
+        followUpId: Uuid,
+        completedOn: LocalDate,
+    ): CompleteFollowUpResult = error("Follow-ups are not used by these tests")
+
+    override suspend fun cancelFollowUp(
+        tenantId: Uuid,
+        followUpId: Uuid,
+    ): CancelFollowUpResult = error("Follow-ups are not used by these tests")
 }
 
 private fun updateContactDetails(): UpdateContactDto = UpdateContactDto(
