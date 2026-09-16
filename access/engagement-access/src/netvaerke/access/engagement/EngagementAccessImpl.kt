@@ -1,40 +1,94 @@
 package netvaerke.access.engagement
 
+import java.time.LocalDate
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import netvaerke.access.engagement.repository.FollowUpRepository
 import netvaerke.access.engagement.repository.InteractionEntity
 import netvaerke.access.engagement.repository.InteractionRepository
-import kotlin.uuid.Uuid
 
 class EngagementAccessImpl(
-    private val repository: InteractionRepository,
+    private val interactionRepository: InteractionRepository,
+    private val followUpRepository: FollowUpRepository,
     private val jdbcDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : EngagementAccess {
     override suspend fun registerInteraction(tenantId: Uuid, interaction: Interaction): Boolean =
         withContext(jdbcDispatcher) {
-            repository.registerInteraction(interaction.toEntity(tenantId))
+            interactionRepository.registerInteraction(interaction.toEntity(tenantId))
         }
 
     override suspend fun updateInteraction(tenantId: Uuid, interaction: Interaction): Boolean =
         withContext(jdbcDispatcher) {
-            repository.updateInteraction(interaction.toEntity(tenantId))
+            interactionRepository.updateInteraction(interaction.toEntity(tenantId))
         }
 
     override suspend fun deleteInteraction(tenantId: Uuid, interactionId: Uuid): Boolean =
         withContext(jdbcDispatcher) {
-            repository.deleteInteraction(tenantId, interactionId)
+            interactionRepository.deleteInteraction(tenantId, interactionId)
         }
 
     override suspend fun getInteraction(tenantId: Uuid, interactionId: Uuid): Interaction? =
         withContext(jdbcDispatcher) {
-            repository.getInteraction(tenantId, interactionId)
+            interactionRepository.getInteraction(tenantId, interactionId)
         }?.toInteraction()
 
     override suspend fun getResourceInteractions(tenantId: Uuid, resourceId: Uuid): List<Interaction> =
         withContext(jdbcDispatcher) {
-            repository.getResourceInteractions(tenantId, resourceId)
+            interactionRepository.getResourceInteractions(tenantId, resourceId)
         }.map { it.toInteraction() }
+
+    override suspend fun registerFollowUp(
+        tenantId: Uuid,
+        followUp: RegisterFollowUp,
+    ): RegisterFollowUpResult = withContext(jdbcDispatcher) {
+        followUpRepository.registerFollowUp(tenantId, followUp)
+    }
+
+    override suspend fun getFollowUp(tenantId: Uuid, followUpId: Uuid): FollowUp? =
+        withContext(jdbcDispatcher) {
+            followUpRepository.getFollowUp(tenantId, followUpId)
+        }
+
+    override suspend fun getResourceFollowUps(tenantId: Uuid, resourceId: Uuid): List<FollowUp> =
+        withContext(jdbcDispatcher) {
+            followUpRepository.getResourceFollowUps(tenantId, resourceId)
+        }
+
+    override suspend fun getOpenFollowUpsDueBy(tenantId: Uuid, dueOn: LocalDate): List<FollowUp> =
+        withContext(jdbcDispatcher) {
+            followUpRepository.getOpenFollowUpsDueBy(tenantId, dueOn)
+        }
+
+    override suspend fun rescheduleFollowUp(
+        tenantId: Uuid,
+        followUpId: Uuid,
+        dueOn: LocalDate,
+    ): RescheduleFollowUpResult = withContext(jdbcDispatcher) {
+        followUpRepository.rescheduleFollowUp(tenantId, followUpId, dueOn)
+    }
+
+    override suspend fun changeFollowUpCadence(
+        tenantId: Uuid,
+        followUpId: Uuid,
+        cadence: FollowUpCadence,
+    ): ChangeFollowUpCadenceResult = withContext(jdbcDispatcher) {
+        followUpRepository.changeFollowUpCadence(tenantId, followUpId, cadence)
+    }
+
+    override suspend fun completeFollowUp(
+        tenantId: Uuid,
+        followUpId: Uuid,
+        completedOn: LocalDate,
+    ): CompleteFollowUpResult = withContext(jdbcDispatcher) {
+        followUpRepository.completeFollowUp(tenantId, followUpId, completedOn)
+    }
+
+    override suspend fun cancelFollowUp(tenantId: Uuid, followUpId: Uuid): CancelFollowUpResult =
+        withContext(jdbcDispatcher) {
+            followUpRepository.cancelFollowUp(tenantId, followUpId)
+        }
 
     private fun Interaction.toEntity(tenantId: Uuid): InteractionEntity = InteractionEntity(
         id = id,

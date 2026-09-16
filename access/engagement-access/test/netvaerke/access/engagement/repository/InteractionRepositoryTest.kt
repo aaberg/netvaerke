@@ -30,7 +30,7 @@ class InteractionRepositoryTest {
         get() = EngagementTestDatabase.dataSource
 
     private val access: EngagementAccess
-        get() = EngagementAccessImpl(InteractionRepository(dataSource))
+        get() = EngagementAccessImpl(InteractionRepository(dataSource), FollowUpRepository(dataSource))
 
     @BeforeTest
     fun clearInteractions() {
@@ -131,7 +131,7 @@ class InteractionRepositoryTest {
     )
 }
 
-private object EngagementTestDatabase {
+internal object EngagementTestDatabase {
     val dataSource: DataSource by lazy {
         PostgresTestDatabase.dataSource().also(::runMigrations)
     }
