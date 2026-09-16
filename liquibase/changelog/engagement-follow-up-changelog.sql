@@ -46,7 +46,9 @@ CREATE TABLE engagement.follow_up (
             (rule_id IS NULL AND cadence_amount IS NULL AND cadence_unit IS NULL)
             OR (
                 rule_id IS NOT NULL
+                AND cadence_amount IS NOT NULL
                 AND cadence_amount > 0
+                AND cadence_unit IS NOT NULL
                 AND cadence_unit IN ('DAYS', 'WEEKS', 'MONTHS', 'YEARS')
             )
         )
