@@ -63,6 +63,9 @@ class NatsTransportTest {
                         suffix: String?,
                     ): NatsGreetingResponse = NatsGreetingResponse("$greeting, $name${suffix.orEmpty()}")
 
+                    override suspend fun find(name: String): NatsGreetingResponse? =
+                        name.takeIf { it == "Lars" }?.let { NatsGreetingResponse("Hello, $it") }
+
                     override suspend fun record(name: String, count: Int) {
                         recorded.set("$name:$count")
                     }
@@ -79,6 +82,11 @@ class NatsTransportTest {
                     NatsGreetingResponse("Hello, Lars"),
                     runNatsSuspend { service.greet("Hello", "Lars", null) },
                 )
+                assertEquals(
+                    NatsGreetingResponse("Hello, Lars"),
+                    runNatsSuspend { service.find("Lars") },
+                )
+                assertEquals(null, runNatsSuspend { service.find("Ada") })
                 runNatsSuspend { service.record("Lars", 2) }
                 assertEquals("Lars:2", recorded.get())
             }
@@ -234,6 +242,7 @@ private interface NatsGreetingService {
 private interface NatsArgumentService {
     suspend fun defaultGreeting(): NatsGreetingResponse
     suspend fun greet(greeting: String, name: String, suffix: String?): NatsGreetingResponse
+    suspend fun find(name: String): NatsGreetingResponse?
     suspend fun record(name: String, count: Int)
 }
 

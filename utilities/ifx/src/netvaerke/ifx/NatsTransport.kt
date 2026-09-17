@@ -36,6 +36,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.serializer
 
 public class NatsTransport(
@@ -241,10 +242,7 @@ private class NatsRequestReplyBinding(
     private fun decodeReply(codec: MethodCodec, message: Message): Any? {
         val reply = json.decodeFromString(NatsReply.serializer(), message.data.decodeToString())
         reply.error?.let { throw IfxRemoteException(it.type, it.message) }
-        return json.decodeFromJsonElement(
-            codec.responseSerializer,
-            requireNotNull(reply.value) { "NATS reply did not contain a value" },
-        )
+        return json.decodeFromJsonElement(codec.responseSerializer, reply.value)
     }
 }
 
@@ -272,7 +270,7 @@ private data class NatsRequest(
 
 @Serializable
 private data class NatsReply(
-    val value: JsonElement? = null,
+    val value: JsonElement = JsonNull,
     val error: NatsError? = null,
 )
 

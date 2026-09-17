@@ -10,6 +10,7 @@ import netvaerke.access.contact.*
 import netvaerke.testsupport.PostgresTestDatabase
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.OffsetDateTime
 import java.util.*
 import javax.sql.DataSource
 import kotlin.test.BeforeTest
@@ -17,6 +18,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.runBlocking
@@ -69,7 +72,7 @@ class ContactRepositoryTest {
     }
 
     @Test
-    fun `updates filters and deletes contacts`() = runBlocking {
+    fun `updates and filters contacts`() = runBlocking {
         val tenantId = randomUuid()
         val otherTenantId = randomUuid()
         val contact = Contact(
@@ -102,6 +105,30 @@ class ContactRepositoryTest {
     }
 
     @Test
+    fun `marks contacts as deleted without allowing restoration`() = runBlocking {
+        val tenantId = randomUuid()
+        val contact = Contact(
+            id = randomUuid(),
+            name = "Grace Hopper",
+            contactDetails = listOf(Note("COBOL pioneer")),
+        )
+        assertTrue(access.saveContact(tenantId, contact))
+
+        assertTrue(access.deleteContact(tenantId, contact.id))
+
+        assertNull(access.getContact(tenantId, contact.id))
+        assertEquals(emptyList(), access.getContacts(tenantId))
+        assertEquals("array" to 1, storedDetailsShape(contact.id))
+        assertFalse(access.deleteContact(tenantId, contact.id))
+        assertFalse(access.saveContact(tenantId, contact.copy(name = "Restored Grace Hopper")))
+
+        val stored = storedContactState(contact.id)
+        assertEquals(contact.name, stored.first)
+        assertNotNull(stored.second)
+        assertNull(access.getContact(tenantId, contact.id))
+    }
+
+    @Test
     fun `does not move or delete a contact from another tenant`() = runBlocking {
         val tenantId = randomUuid()
         val otherTenantId = randomUuid()
@@ -125,6 +152,19 @@ class ContactRepositoryTest {
                 statement.executeQuery().use { result ->
                     check(result.next())
                     result.getString(1) to result.getInt(2)
+                }
+            }
+        }
+
+    private fun storedContactState(id: Uuid): Pair<String, OffsetDateTime?> =
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                "SELECT name, deleted_at FROM contact.contact WHERE id = ?",
+            ).use { statement ->
+                statement.setObject(1, UUID.fromString(id.toString()))
+                statement.executeQuery().use { result ->
+                    check(result.next())
+                    result.getString("name") to result.getObject("deleted_at", OffsetDateTime::class.java)
                 }
             }
         }

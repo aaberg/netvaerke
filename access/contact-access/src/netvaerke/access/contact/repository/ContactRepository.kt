@@ -26,9 +26,9 @@ class ContactRepository(
         }
     }
 
-    fun deleteContact(tenantId: Uuid, contactId: Uuid): Boolean {
+    fun markContactDeleted(tenantId: Uuid, contactId: Uuid): Boolean {
         dataSource.connection.use { connection ->
-            connection.prepareStatement(DELETE_CONTACT).use { statement ->
+            connection.prepareStatement(MARK_CONTACT_DELETED).use { statement ->
                 statement.setObject(1, contactId.toJavaUuid())
                 statement.setObject(2, tenantId.toJavaUuid())
                 return statement.executeUpdate() == 1
@@ -79,23 +79,25 @@ class ContactRepository(
                 name = EXCLUDED.name,
                 details = EXCLUDED.details
             WHERE contact.contact.tenant = EXCLUDED.tenant
+                AND contact.contact.deleted_at IS NULL
         """
 
-        const val DELETE_CONTACT = """
-            DELETE FROM contact.contact
-            WHERE id = ? AND tenant = ?
+        const val MARK_CONTACT_DELETED = """
+            UPDATE contact.contact
+            SET deleted_at = NOW()
+            WHERE id = ? AND tenant = ? AND deleted_at IS NULL
         """
 
         const val GET_CONTACT = """
             SELECT id, name, tenant, details, created_at
             FROM contact.contact
-            WHERE id = ? AND tenant = ?
+            WHERE id = ? AND tenant = ? AND deleted_at IS NULL
         """
 
         const val GET_CONTACTS = """
             SELECT id, name, tenant, details, created_at
             FROM contact.contact
-            WHERE tenant = ?
+            WHERE tenant = ? AND deleted_at IS NULL
             ORDER BY created_at, id
         """
     }

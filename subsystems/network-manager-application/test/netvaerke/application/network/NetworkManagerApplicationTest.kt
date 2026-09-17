@@ -230,7 +230,50 @@ class NetworkManagerApplicationTest {
                             checkNotNull(completion.next).followUpId,
                         )
                         assertEquals(ContactFollowUpStatusDto.CANCELLED, cancelled.status)
+
+                        val preservedFollowUp = client.registerContactFollowUp(
+                            tenantId,
+                            actorId,
+                            created.contactId,
+                            CreateContactFollowUpDto(dueOn = "2026-10-03", recurrence = null),
+                        )
+                        client.deleteContact(tenantId, actorId, created.contactId)
+
+                        assertEquals(null, client.getContact(tenantId, actorId, created.contactId))
+                        assertEquals(null, client.getContactOverview(tenantId, actorId, created.contactId))
+
+                        assertEquals(emptyList(), client.getTenantContacts(tenantId, actorId))
+                        assertEquals(
+                            emptyList(),
+                            client.getOpenContactFollowUpsDueBy(tenantId, actorId, "2026-10-03"),
+                        )
+                        assertSoftDeletedContactPreservesFollowUp(created.contactId, preservedFollowUp.followUpId)
                     }
+                }
+            }
+        }
+    }
+
+    private fun assertSoftDeletedContactPreservesFollowUp(contactId: Uuid, followUpId: Uuid) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT contact.deleted_at,
+                       EXISTS (
+                           SELECT 1
+                           FROM engagement.follow_up
+                           WHERE id = ?
+                       ) AS follow_up_exists
+                FROM contact.contact AS contact
+                WHERE contact.id = ?
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setObject(1, UUID.fromString(followUpId.toString()))
+                statement.setObject(2, UUID.fromString(contactId.toString()))
+                statement.executeQuery().use { result ->
+                    assertTrue(result.next())
+                    assertTrue(result.getObject("deleted_at") != null)
+                    assertTrue(result.getBoolean("follow_up_exists"))
                 }
             }
         }

@@ -24,7 +24,7 @@ class ContactAccessImpl(
 
     override suspend fun deleteContact(tenantId: Uuid, contactId: Uuid): Boolean =
         withContext(jdbcDispatcher) {
-            repository.deleteContact(tenantId, contactId)
+            repository.markContactDeleted(tenantId, contactId)
         }
 
     override suspend fun getContact(tenantId: Uuid, id: Uuid): Contact? =

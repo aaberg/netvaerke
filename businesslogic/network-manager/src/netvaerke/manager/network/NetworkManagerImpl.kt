@@ -66,10 +66,8 @@ class NetworkManagerImpl(
         val contactsById = contactAccess.getContacts(tenantId).associateBy { it.id }
         return engagementAccess
             .getOpenFollowUpsDueBy(tenantId, dueOn.toLocalDate("Follow-up due date"))
-            .map { followUp ->
-                val contact = checkNotNull(contactsById[followUp.resourceId]) {
-                    "Follow-up ${followUp.id} references missing contact ${followUp.resourceId}"
-                }
+            .mapNotNull { followUp ->
+                val contact = contactsById[followUp.resourceId] ?: return@mapNotNull null
                 DueContactFollowUpDto(
                     contact = contact.toListItemDto(),
                     followUp = followUp.toDto(),
