@@ -1,8 +1,15 @@
 package netvaerke.manager.network
 
 import java.time.Instant
+import java.time.LocalDate
 import netvaerke.access.engagement.Interaction
 import netvaerke.access.engagement.InteractionChannel
+import netvaerke.access.engagement.FollowUp
+import netvaerke.access.engagement.FollowUpCadence
+import netvaerke.access.engagement.FollowUpCompletion
+import netvaerke.access.engagement.FollowUpIntervalUnit
+import netvaerke.access.engagement.FollowUpSchedule
+import netvaerke.access.engagement.RegisterFollowUp
 import netvaerke.access.contact.Contact
 import netvaerke.access.contact.ContactImage
 import netvaerke.access.contact.EmailAddress
@@ -95,6 +102,43 @@ internal fun Interaction.update(update: UpdateContactInteractionDto): Interactio
     occurredAt = update.occurredAt.toInstant("Interaction occurrence time"),
 )
 
+internal fun CreateContactFollowUpDto.toRegistration(
+    contactId: kotlin.uuid.Uuid,
+    followUpId: kotlin.uuid.Uuid,
+): RegisterFollowUp = RegisterFollowUp(
+    id = followUpId,
+    resourceId = contactId,
+    dueOn = dueOn.toLocalDate("Follow-up due date"),
+    schedule = recurrence?.let { FollowUpSchedule.Recurring(it.toCadence()) } ?: FollowUpSchedule.OneTime,
+)
+
+internal fun ContactFollowUpCadenceDto.toCadence(): FollowUpCadence = FollowUpCadence(
+    amount = amount,
+    unit = FollowUpIntervalUnit.valueOf(unit.name),
+)
+
+internal fun FollowUp.toDto(): ContactFollowUpDto = ContactFollowUpDto(
+    followUpId = id,
+    dueOn = dueOn.toString(),
+    recurrence = when (val storedSchedule = schedule) {
+        FollowUpSchedule.OneTime -> null
+        is FollowUpSchedule.Recurring -> storedSchedule.cadence.toDto()
+    },
+    status = ContactFollowUpStatusDto.valueOf(status.name),
+    completedOn = completedOn?.toString(),
+    createdAt = createdAt.toString(),
+)
+
+internal fun FollowUpCompletion.toDto(): ContactFollowUpCompletionDto = ContactFollowUpCompletionDto(
+    completed = completed.toDto(),
+    next = next?.toDto(),
+)
+
+private fun FollowUpCadence.toDto(): ContactFollowUpCadenceDto = ContactFollowUpCadenceDto(
+    amount = amount,
+    unit = ContactFollowUpIntervalUnitDto.valueOf(unit.name),
+)
+
 private fun InteractionChannel.toDto(): InteractionChannelDto = InteractionChannelDto.valueOf(name)
 
 private fun InteractionChannelDto.toInteractionChannel(): InteractionChannel = InteractionChannel.valueOf(name)
@@ -103,6 +147,12 @@ private fun String.toInstant(field: String): Instant = try {
     Instant.parse(this)
 } catch (exception: Exception) {
     throw IllegalArgumentException("$field must be an ISO-8601 instant", exception)
+}
+
+internal fun String.toLocalDate(field: String): LocalDate = try {
+    LocalDate.parse(this)
+} catch (exception: Exception) {
+    throw IllegalArgumentException("$field must be an ISO-8601 local date", exception)
 }
 
 private fun EmailAddressDto.toContactDetail(): EmailAddress = EmailAddress(value, isPrimary, label)

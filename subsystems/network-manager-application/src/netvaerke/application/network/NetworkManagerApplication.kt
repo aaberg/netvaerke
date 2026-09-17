@@ -2,6 +2,7 @@ package netvaerke.application.network
 
 import io.nats.client.Connection
 import io.opentelemetry.api.GlobalOpenTelemetry
+import java.time.Clock
 import javax.sql.DataSource
 import netvaerke.access.contact.ContactAccess
 import netvaerke.access.contact.ContactAccessImpl
@@ -25,6 +26,7 @@ internal fun createNetworkManagerIfx(
     dataSource: DataSource,
     connection: Connection,
     config: ApplicationConfig,
+    clock: Clock = Clock.systemUTC(),
 ): Ifx {
     val ifx = Ifx {
         tracing(GlobalOpenTelemetry.get())
@@ -68,6 +70,7 @@ internal fun createNetworkManagerIfx(
                 authorizer = ifx.create<AuthorizationEngine>(),
                 contactAccess = ifx.create<ContactAccess>(),
                 engagementAccess = ifx.create<EngagementAccess>(),
+                clock = clock,
             ),
         )
         return ifx

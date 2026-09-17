@@ -26,6 +26,7 @@ data class TenantContactDto(
 data class ContactOverviewDto(
     val contact: TenantContactDto,
     val interactions: List<ContactInteractionDto>,
+    val followUps: List<ContactFollowUpDto>,
 )
 
 @Serializable
@@ -60,6 +61,55 @@ enum class InteractionChannelDto {
     CHAT,
     IN_PERSON,
 }
+
+@Serializable
+data class CreateContactFollowUpDto(
+    val dueOn: String,
+    val recurrence: ContactFollowUpCadenceDto?,
+)
+
+@Serializable
+data class ContactFollowUpCadenceDto(
+    val amount: Int,
+    val unit: ContactFollowUpIntervalUnitDto,
+)
+
+@Serializable
+enum class ContactFollowUpIntervalUnitDto {
+    DAYS,
+    WEEKS,
+    MONTHS,
+    YEARS,
+}
+
+@Serializable
+data class ContactFollowUpDto(
+    val followUpId: Uuid,
+    val dueOn: String,
+    val recurrence: ContactFollowUpCadenceDto?,
+    val status: ContactFollowUpStatusDto,
+    val completedOn: String?,
+    val createdAt: String,
+)
+
+@Serializable
+enum class ContactFollowUpStatusDto {
+    OPEN,
+    DONE,
+    CANCELLED,
+}
+
+@Serializable
+data class ContactFollowUpCompletionDto(
+    val completed: ContactFollowUpDto,
+    val next: ContactFollowUpDto?,
+)
+
+@Serializable
+data class DueContactFollowUpDto(
+    val contact: TenantContactListItemDto,
+    val followUp: ContactFollowUpDto,
+)
 
 @Serializable
 data class CreateNewContactDto(
