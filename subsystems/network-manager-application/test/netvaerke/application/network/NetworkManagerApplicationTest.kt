@@ -1,6 +1,9 @@
 package netvaerke.application.network
 
 import io.nats.client.Nats
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
@@ -27,6 +30,10 @@ import netvaerke.access.tenant.TenantMemberRole
 import netvaerke.access.tenant.TenantType
 import netvaerke.access.tenant.repository.TenantRepository
 import netvaerke.manager.network.CreateNewContactDto
+import netvaerke.manager.network.ContactFollowUpCadenceDto
+import netvaerke.manager.network.ContactFollowUpIntervalUnitDto
+import netvaerke.manager.network.ContactFollowUpStatusDto
+import netvaerke.manager.network.CreateContactFollowUpDto
 import netvaerke.manager.network.CreateContactInteractionDto
 import netvaerke.manager.network.EmailAddressDto
 import netvaerke.manager.network.NetworkManager
@@ -38,6 +45,8 @@ import netvaerke.testsupport.NatsTestBroker
 import netvaerke.testsupport.PostgresTestDatabase
 import org.postgresql.ds.PGSimpleDataSource
 
+private val TEST_CLOCK: Clock = Clock.fixed(Instant.parse("2026-10-03T12:00:00Z"), ZoneOffset.UTC)
+
 class NetworkManagerApplicationTest {
     private val dataSource: DataSource
         get() = NetworkManagerApplicationTestDatabase.dataSource
@@ -46,7 +55,17 @@ class NetworkManagerApplicationTest {
     fun clearNetworkData() {
         dataSource.connection.use { connection ->
             connection.createStatement().use { statement ->
-                statement.executeUpdate("TRUNCATE TABLE engagement.interaction, contact.contact, tenant.tenant CASCADE")
+                statement.executeUpdate(
+                    """
+                    TRUNCATE TABLE
+                        engagement.follow_up,
+                        engagement.follow_up_rule,
+                        engagement.interaction,
+                        contact.contact,
+                        tenant.tenant
+                    CASCADE
+                    """.trimIndent(),
+                )
             }
         }
     }
@@ -79,7 +98,7 @@ class NetworkManagerApplicationTest {
 
         NatsTestBroker.openConnection().use { serverConnection ->
             NatsTestBroker.openConnection().use { clientConnection ->
-                createNetworkManagerIfx(dataSource, serverConnection, config).use { serverIfx ->
+                createNetworkManagerIfx(dataSource, serverConnection, config, TEST_CLOCK).use { serverIfx ->
                     Ifx {
                         service<NetworkManager> {
                             via(NatsTransport(clientConnection).requestReply(subject))
@@ -149,6 +168,68 @@ class NetworkManagerApplicationTest {
                             interaction.interactionId,
                         )
                         assertEquals(emptyList(), client.getContactOverview(tenantId, actorId, created.contactId)?.interactions)
+
+                        val registeredFollowUp = client.registerContactFollowUp(
+                            tenantId,
+                            actorId,
+                            created.contactId,
+                            CreateContactFollowUpDto(
+                                dueOn = "2026-10-01",
+                                recurrence = ContactFollowUpCadenceDto(
+                                    amount = 1,
+                                    unit = ContactFollowUpIntervalUnitDto.DAYS,
+                                ),
+                            ),
+                        )
+                        assertEquals(
+                            listOf(registeredFollowUp),
+                            client.getContactOverview(tenantId, actorId, created.contactId)?.followUps,
+                        )
+                        assertEquals(
+                            created.contactId,
+                            client.getOpenContactFollowUpsDueBy(tenantId, actorId, "2026-10-01")
+                                .single()
+                                .contact
+                                .contactId,
+                        )
+
+                        val rescheduledFollowUp = client.rescheduleContactFollowUp(
+                            tenantId,
+                            actorId,
+                            created.contactId,
+                            registeredFollowUp.followUpId,
+                            "2026-10-02",
+                        )
+                        assertEquals("2026-10-02", rescheduledFollowUp.dueOn)
+
+                        val changedFollowUp = client.changeContactFollowUpCadence(
+                            tenantId,
+                            actorId,
+                            created.contactId,
+                            registeredFollowUp.followUpId,
+                            ContactFollowUpCadenceDto(2, ContactFollowUpIntervalUnitDto.DAYS),
+                        )
+                        assertEquals(
+                            ContactFollowUpCadenceDto(2, ContactFollowUpIntervalUnitDto.DAYS),
+                            changedFollowUp.recurrence,
+                        )
+
+                        val completion = client.completeContactFollowUp(
+                            tenantId,
+                            actorId,
+                            created.contactId,
+                            registeredFollowUp.followUpId,
+                        )
+                        assertEquals("2026-10-03", completion.completed.completedOn)
+                        assertEquals("2026-10-05", completion.next?.dueOn)
+
+                        val cancelled = client.cancelContactFollowUp(
+                            tenantId,
+                            actorId,
+                            created.contactId,
+                            checkNotNull(completion.next).followUpId,
+                        )
+                        assertEquals(ContactFollowUpStatusDto.CANCELLED, cancelled.status)
                     }
                 }
             }

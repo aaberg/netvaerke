@@ -25,6 +25,11 @@ import netvaerke.manager.network.ContactImageUpdateDto
 import netvaerke.manager.network.ContactImageUploadDto
 import netvaerke.manager.network.ContactInteractionDto
 import netvaerke.manager.network.ContactOverviewDto
+import netvaerke.manager.network.ContactFollowUpCadenceDto
+import netvaerke.manager.network.ContactFollowUpCompletionDto
+import netvaerke.manager.network.ContactFollowUpDto
+import netvaerke.manager.network.CreateContactFollowUpDto
+import netvaerke.manager.network.DueContactFollowUpDto
 import netvaerke.manager.network.CreateContactInteractionDto
 import netvaerke.manager.network.CreateNewContactDto
 import netvaerke.manager.network.EmailAddressDto
@@ -103,6 +108,7 @@ class WebApplicationTest {
                         createdAt = "2025-01-02T15:05:00Z",
                     ),
                 ),
+                followUps = emptyList(),
             )
         }
         application {
@@ -134,6 +140,7 @@ class WebApplicationTest {
             overview = ContactOverviewDto(
                 contact = TenantContactDto(CONTACT_ID, "Ada Lovelace", emptyList(), emptyList(), null, null, null),
                 interactions = emptyList(),
+                followUps = emptyList(),
             )
         }
         application {
@@ -455,6 +462,12 @@ class WebApplicationTest {
             return overview
         }
 
+        override suspend fun getOpenContactFollowUpsDueBy(
+            tenantId: Uuid,
+            actorId: Uuid,
+            dueOn: String,
+        ): List<DueContactFollowUpDto> = emptyList()
+
         override suspend fun createNewContact(
             tenantId: Uuid,
             actorId: Uuid,
@@ -531,6 +544,43 @@ class WebApplicationTest {
             interactionContactId = contactId
             removedInteractionId = interactionId
         }
+
+        override suspend fun registerContactFollowUp(
+            tenantId: Uuid,
+            actorId: Uuid,
+            contactId: Uuid,
+            request: CreateContactFollowUpDto,
+        ): ContactFollowUpDto = error("Follow-ups are not used by web tests")
+
+        override suspend fun rescheduleContactFollowUp(
+            tenantId: Uuid,
+            actorId: Uuid,
+            contactId: Uuid,
+            followUpId: Uuid,
+            dueOn: String,
+        ): ContactFollowUpDto = error("Follow-ups are not used by web tests")
+
+        override suspend fun changeContactFollowUpCadence(
+            tenantId: Uuid,
+            actorId: Uuid,
+            contactId: Uuid,
+            followUpId: Uuid,
+            cadence: ContactFollowUpCadenceDto,
+        ): ContactFollowUpDto = error("Follow-ups are not used by web tests")
+
+        override suspend fun completeContactFollowUp(
+            tenantId: Uuid,
+            actorId: Uuid,
+            contactId: Uuid,
+            followUpId: Uuid,
+        ): ContactFollowUpCompletionDto = error("Follow-ups are not used by web tests")
+
+        override suspend fun cancelContactFollowUp(
+            tenantId: Uuid,
+            actorId: Uuid,
+            contactId: Uuid,
+            followUpId: Uuid,
+        ): ContactFollowUpDto = error("Follow-ups are not used by web tests")
 
         override suspend fun reserveContactImageUpload(
             tenantId: Uuid,

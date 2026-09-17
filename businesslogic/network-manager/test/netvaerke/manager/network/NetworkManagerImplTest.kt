@@ -1,7 +1,9 @@
 package netvaerke.manager.network
 
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,6 +24,10 @@ import netvaerke.access.engagement.CompleteFollowUpResult
 import netvaerke.access.engagement.EngagementAccess
 import netvaerke.access.engagement.FollowUp
 import netvaerke.access.engagement.FollowUpCadence
+import netvaerke.access.engagement.FollowUpCompletion
+import netvaerke.access.engagement.FollowUpIntervalUnit
+import netvaerke.access.engagement.FollowUpSchedule
+import netvaerke.access.engagement.FollowUpStatus
 import netvaerke.access.engagement.Interaction
 import netvaerke.access.engagement.RegisterFollowUp
 import netvaerke.access.engagement.RegisterFollowUpResult
@@ -91,26 +97,29 @@ class NetworkManagerImplTest {
     }
 
     @Test
-    fun `returns no contact when reads are unauthorized or contact is absent`() = runBlocking {
+    fun `denies unauthorized reads and returns no contact when an authorized contact is absent`() = runBlocking {
         val tenantId = randomUuid()
         val actorId = randomUuid()
+        val denied = NetworkManagerImpl(
+            DenyingAuthorizationEngine,
+            RecordingContactAccess(),
+            RecordingEngagementAccess(),
+        )
 
-        assertNull(
-            NetworkManagerImpl(DenyingAuthorizationEngine, RecordingContactAccess(), RecordingEngagementAccess())
-                .getContact(tenantId, actorId, randomUuid()),
+        assertFailsWith<AuthorizationDeniedException> {
+            denied.getContact(tenantId, actorId, randomUuid())
+        }
+        assertFailsWith<AuthorizationDeniedException> {
+            denied.getContactOverview(tenantId, actorId, randomUuid())
+        }
+
+        val allowed = NetworkManagerImpl(
+            AllowingAuthorizationEngine,
+            RecordingContactAccess(),
+            RecordingEngagementAccess(),
         )
-        assertNull(
-            NetworkManagerImpl(AllowingAuthorizationEngine, RecordingContactAccess(), RecordingEngagementAccess())
-                .getContact(tenantId, actorId, randomUuid()),
-        )
-        assertNull(
-            NetworkManagerImpl(DenyingAuthorizationEngine, RecordingContactAccess(), RecordingEngagementAccess())
-                .getContactOverview(tenantId, actorId, randomUuid()),
-        )
-        assertNull(
-            NetworkManagerImpl(AllowingAuthorizationEngine, RecordingContactAccess(), RecordingEngagementAccess())
-                .getContactOverview(tenantId, actorId, randomUuid()),
-        )
+        assertNull(allowed.getContact(tenantId, actorId, randomUuid()))
+        assertNull(allowed.getContactOverview(tenantId, actorId, randomUuid()))
     }
 
     @Test
@@ -230,6 +239,159 @@ class NetworkManagerImplTest {
         assertEquals(emptyList(), manager.getContactOverview(tenantId, actorId, contactId)?.interactions)
     }
 
+    @Test
+    fun `manages recurring contact follow-ups through overview and due-list reads`() = runBlocking {
+        val tenantId = randomUuid()
+        val actorId = randomUuid()
+        val contactId = randomUuid()
+        val contactAccess = RecordingContactAccess().apply {
+            save(tenantId, Contact(contactId, "Ada Lovelace", emptyList()))
+        }
+        val engagementAccess = RecordingEngagementAccess()
+        val manager = NetworkManagerImpl(
+            AllowingAuthorizationEngine,
+            contactAccess,
+            engagementAccess,
+            Clock.fixed(Instant.parse("2026-10-03T23:30:00Z"), ZoneOffset.ofHours(2)),
+        )
+
+        val registered = manager.registerContactFollowUp(
+            tenantId,
+            actorId,
+            contactId,
+            CreateContactFollowUpDto(
+                dueOn = "2026-10-01",
+                recurrence = ContactFollowUpCadenceDto(1, ContactFollowUpIntervalUnitDto.DAYS),
+            ),
+        )
+
+        assertEquals(ContactFollowUpStatusDto.OPEN, registered.status)
+        assertEquals(
+            ContactFollowUpCadenceDto(1, ContactFollowUpIntervalUnitDto.DAYS),
+            registered.recurrence,
+        )
+        assertEquals(
+            listOf(registered),
+            manager.getContactOverview(tenantId, actorId, contactId)?.followUps,
+        )
+        assertEquals(
+            registered,
+            manager.getOpenContactFollowUpsDueBy(tenantId, actorId, "2026-10-01").single().followUp,
+        )
+
+        val rescheduled = manager.rescheduleContactFollowUp(
+            tenantId,
+            actorId,
+            contactId,
+            registered.followUpId,
+            "2026-10-02",
+        )
+        assertEquals("2026-10-02", rescheduled.dueOn)
+
+        val changed = manager.changeContactFollowUpCadence(
+            tenantId,
+            actorId,
+            contactId,
+            registered.followUpId,
+            ContactFollowUpCadenceDto(2, ContactFollowUpIntervalUnitDto.DAYS),
+        )
+        assertEquals(
+            ContactFollowUpCadenceDto(2, ContactFollowUpIntervalUnitDto.DAYS),
+            changed.recurrence,
+        )
+
+        val completion = manager.completeContactFollowUp(tenantId, actorId, contactId, registered.followUpId)
+        assertEquals("2026-10-03", completion.completed.completedOn)
+        assertEquals("2026-10-05", completion.next?.dueOn)
+
+        val cancelled = manager.cancelContactFollowUp(
+            tenantId,
+            actorId,
+            contactId,
+            checkNotNull(completion.next).followUpId,
+        )
+        assertEquals(ContactFollowUpStatusDto.CANCELLED, cancelled.status)
+    }
+
+    @Test
+    fun `translates follow-up ownership and lifecycle conflicts`() = runBlocking {
+        val tenantId = randomUuid()
+        val actorId = randomUuid()
+        val contactId = randomUuid()
+        val otherContactId = randomUuid()
+        val contactAccess = RecordingContactAccess().apply {
+            save(tenantId, Contact(contactId, "Ada Lovelace", emptyList()))
+            save(tenantId, Contact(otherContactId, "Grace Hopper", emptyList()))
+        }
+        val manager = NetworkManagerImpl(
+            AllowingAuthorizationEngine,
+            contactAccess,
+            RecordingEngagementAccess(),
+            Clock.fixed(Instant.parse("2026-10-03T00:00:00Z"), ZoneOffset.UTC),
+        )
+        val recurrence = ContactFollowUpCadenceDto(1, ContactFollowUpIntervalUnitDto.MONTHS)
+        val recurring = manager.registerContactFollowUp(
+            tenantId,
+            actorId,
+            contactId,
+            CreateContactFollowUpDto("2026-10-01", recurrence),
+        )
+
+        assertFailsWith<ActiveContactFollowUpRecurrenceException> {
+            manager.registerContactFollowUp(
+                tenantId,
+                actorId,
+                contactId,
+                CreateContactFollowUpDto("2026-11-01", recurrence),
+            )
+        }
+        assertFailsWith<ContactFollowUpNotFoundException> {
+            manager.cancelContactFollowUp(tenantId, actorId, otherContactId, recurring.followUpId)
+        }
+
+        val oneTime = manager.registerContactFollowUp(
+            tenantId,
+            actorId,
+            otherContactId,
+            CreateContactFollowUpDto("2026-10-01", recurrence = null),
+        )
+        assertFailsWith<ContactFollowUpNotRecurringException> {
+            manager.changeContactFollowUpCadence(
+                tenantId,
+                actorId,
+                otherContactId,
+                oneTime.followUpId,
+                recurrence,
+            )
+        }
+
+        manager.cancelContactFollowUp(tenantId, actorId, otherContactId, oneTime.followUpId)
+        assertFailsWith<ContactFollowUpAlreadyCancelledException> {
+            manager.cancelContactFollowUp(tenantId, actorId, otherContactId, oneTime.followUpId)
+        }
+        assertFailsWith<ContactFollowUpNotOpenException> {
+            manager.rescheduleContactFollowUp(
+                tenantId,
+                actorId,
+                otherContactId,
+                oneTime.followUpId,
+                "2026-10-02",
+            )
+        }
+        assertFailsWith<ContactFollowUpCancelledException> {
+            manager.completeContactFollowUp(tenantId, actorId, otherContactId, oneTime.followUpId)
+        }
+
+        manager.completeContactFollowUp(tenantId, actorId, contactId, recurring.followUpId)
+        assertFailsWith<ContactFollowUpAlreadyCompletedException> {
+            manager.completeContactFollowUp(tenantId, actorId, contactId, recurring.followUpId)
+        }
+        assertFailsWith<ContactFollowUpAlreadyCompletedException> {
+            manager.cancelContactFollowUp(tenantId, actorId, contactId, recurring.followUpId)
+        }
+        Unit
+    }
+
 }
 
 private object AllowingAuthorizationEngine : AuthorizationEngine {
@@ -273,6 +435,7 @@ private fun contactDetails(emails: List<EmailAddressDto> = emptyList()): CreateN
 
 private class RecordingEngagementAccess : EngagementAccess {
     private val interactions = mutableMapOf<Pair<Uuid, Uuid>, Interaction>()
+    private val followUps = mutableMapOf<Pair<Uuid, Uuid>, FollowUp>()
 
     override suspend fun registerInteraction(tenantId: Uuid, interaction: Interaction): Boolean {
         val key = tenantId to interaction.id
@@ -308,40 +471,136 @@ private class RecordingEngagementAccess : EngagementAccess {
     override suspend fun registerFollowUp(
         tenantId: Uuid,
         followUp: RegisterFollowUp,
-    ): RegisterFollowUpResult = error("Follow-ups are not used by these tests")
+    ): RegisterFollowUpResult {
+        val key = tenantId to followUp.id
+        if (key in followUps) return RegisterFollowUpResult.IdAlreadyExists
+        if (
+            followUp.schedule is FollowUpSchedule.Recurring &&
+            followUps
+                .filterKeys { it.first == tenantId }
+                .values
+                .any {
+                    it.resourceId == followUp.resourceId &&
+                        it.status == FollowUpStatus.OPEN &&
+                        it.schedule is FollowUpSchedule.Recurring
+                }
+        ) {
+            return RegisterFollowUpResult.ActiveRecurrenceAlreadyExists
+        }
+        val stored = FollowUp(
+            id = followUp.id,
+            resourceId = followUp.resourceId,
+            dueOn = followUp.dueOn,
+            dueDateRevision = 1,
+            schedule = followUp.schedule,
+            status = FollowUpStatus.OPEN,
+            completedOn = null,
+            createdAt = Instant.parse("2026-09-09T00:00:00Z"),
+        )
+        followUps[key] = stored
+        return RegisterFollowUpResult.Registered(stored)
+    }
 
     override suspend fun getFollowUp(tenantId: Uuid, followUpId: Uuid): FollowUp? =
-        error("Follow-ups are not used by these tests")
+        followUps[tenantId to followUpId]
 
     override suspend fun getResourceFollowUps(tenantId: Uuid, resourceId: Uuid): List<FollowUp> =
-        error("Follow-ups are not used by these tests")
+        followUps
+            .filterKeys { it.first == tenantId }
+            .values
+            .filter { it.resourceId == resourceId }
+            .sortedWith(compareByDescending<FollowUp> { it.dueOn }.thenByDescending { it.id.toString() })
 
     override suspend fun getOpenFollowUpsDueBy(tenantId: Uuid, dueOn: LocalDate): List<FollowUp> =
-        error("Follow-ups are not used by these tests")
+        followUps
+            .filterKeys { it.first == tenantId }
+            .values
+            .filter { it.status == FollowUpStatus.OPEN && it.dueOn <= dueOn }
+            .sortedWith(compareBy<FollowUp> { it.dueOn }.thenBy { it.id.toString() })
 
     override suspend fun rescheduleFollowUp(
         tenantId: Uuid,
         followUpId: Uuid,
         dueOn: LocalDate,
-    ): RescheduleFollowUpResult = error("Follow-ups are not used by these tests")
+    ): RescheduleFollowUpResult {
+        val key = tenantId to followUpId
+        val stored = followUps[key] ?: return RescheduleFollowUpResult.NotFound
+        if (stored.status != FollowUpStatus.OPEN) return RescheduleFollowUpResult.NotOpen
+        val rescheduled = stored.copy(
+            dueOn = dueOn,
+            dueDateRevision = stored.dueDateRevision + if (stored.dueOn == dueOn) 0 else 1,
+        )
+        followUps[key] = rescheduled
+        return RescheduleFollowUpResult.Rescheduled(rescheduled)
+    }
 
     override suspend fun changeFollowUpCadence(
         tenantId: Uuid,
         followUpId: Uuid,
         cadence: FollowUpCadence,
-    ): ChangeFollowUpCadenceResult = error("Follow-ups are not used by these tests")
+    ): ChangeFollowUpCadenceResult {
+        val key = tenantId to followUpId
+        val stored = followUps[key] ?: return ChangeFollowUpCadenceResult.NotFound
+        if (stored.status != FollowUpStatus.OPEN) return ChangeFollowUpCadenceResult.NotOpen
+        if (stored.schedule !is FollowUpSchedule.Recurring) return ChangeFollowUpCadenceResult.NotRecurring
+        val changed = stored.copy(schedule = FollowUpSchedule.Recurring(cadence))
+        followUps[key] = changed
+        return ChangeFollowUpCadenceResult.Changed(changed)
+    }
 
     override suspend fun completeFollowUp(
         tenantId: Uuid,
         followUpId: Uuid,
         completedOn: LocalDate,
-    ): CompleteFollowUpResult = error("Follow-ups are not used by these tests")
+    ): CompleteFollowUpResult {
+        val key = tenantId to followUpId
+        val stored = followUps[key] ?: return CompleteFollowUpResult.NotFound
+        when (stored.status) {
+            FollowUpStatus.DONE -> return CompleteFollowUpResult.AlreadyDone
+            FollowUpStatus.CANCELLED -> return CompleteFollowUpResult.Cancelled
+            FollowUpStatus.OPEN -> Unit
+        }
+        val completed = stored.copy(status = FollowUpStatus.DONE, completedOn = completedOn)
+        followUps[key] = completed
+        val next = (stored.schedule as? FollowUpSchedule.Recurring)?.let { recurring ->
+            FollowUp(
+                id = randomUuid(),
+                resourceId = stored.resourceId,
+                dueOn = completedOn.plus(recurring.cadence),
+                dueDateRevision = 1,
+                schedule = stored.schedule,
+                status = FollowUpStatus.OPEN,
+                completedOn = null,
+                createdAt = Instant.parse("2026-09-09T00:00:00Z"),
+            ).also { followUps[tenantId to it.id] = it }
+        }
+        return CompleteFollowUpResult.Completed(FollowUpCompletion(completed, next))
+    }
 
     override suspend fun cancelFollowUp(
         tenantId: Uuid,
         followUpId: Uuid,
-    ): CancelFollowUpResult = error("Follow-ups are not used by these tests")
+    ): CancelFollowUpResult {
+        val key = tenantId to followUpId
+        val stored = followUps[key] ?: return CancelFollowUpResult.NotFound
+        when (stored.status) {
+            FollowUpStatus.DONE -> return CancelFollowUpResult.AlreadyDone
+            FollowUpStatus.CANCELLED -> return CancelFollowUpResult.AlreadyCancelled
+            FollowUpStatus.OPEN -> Unit
+        }
+        val cancelled = stored.copy(status = FollowUpStatus.CANCELLED)
+        followUps[key] = cancelled
+        return CancelFollowUpResult.Cancelled(cancelled)
+    }
 }
+
+private fun LocalDate.plus(cadence: FollowUpCadence): LocalDate = when (cadence.unit) {
+    FollowUpIntervalUnit.DAYS -> plusDays(cadence.amount.toLong())
+    FollowUpIntervalUnit.WEEKS -> plusWeeks(cadence.amount.toLong())
+    FollowUpIntervalUnit.MONTHS -> plusMonths(cadence.amount.toLong())
+    FollowUpIntervalUnit.YEARS -> plusYears(cadence.amount.toLong())
+}
+
 
 private fun updateContactDetails(): UpdateContactDto = UpdateContactDto(
     name = "Ada Lovelace",
