@@ -314,6 +314,52 @@ class NetworkManagerImplTest {
     }
 
     @Test
+    fun `hides deleted contacts and their open follow-ups`() = runBlocking {
+        val tenantId = randomUuid()
+        val actorId = randomUuid()
+        val deletedContactId = randomUuid()
+        val activeContactId = randomUuid()
+        val contactAccess = RecordingContactAccess().apply {
+            save(tenantId, Contact(deletedContactId, "Ada Lovelace", emptyList()))
+            save(tenantId, Contact(activeContactId, "Grace Hopper", emptyList()))
+        }
+        val manager = NetworkManagerImpl(
+            AllowingAuthorizationEngine,
+            contactAccess,
+            RecordingEngagementAccess(),
+        )
+        manager.registerContactFollowUp(
+            tenantId,
+            actorId,
+            deletedContactId,
+            CreateContactFollowUpDto("2026-10-01", recurrence = null),
+        )
+        val activeFollowUp = manager.registerContactFollowUp(
+            tenantId,
+            actorId,
+            activeContactId,
+            CreateContactFollowUpDto("2026-10-01", recurrence = null),
+        )
+
+        manager.deleteContact(tenantId, actorId, deletedContactId)
+
+        assertNull(manager.getContact(tenantId, actorId, deletedContactId))
+        assertNull(manager.getContactOverview(tenantId, actorId, deletedContactId))
+        assertEquals(
+            listOf(activeContactId),
+            manager.getTenantContacts(tenantId, actorId).map { it.contactId },
+        )
+        assertEquals(
+            listOf(activeFollowUp),
+            manager.getOpenContactFollowUpsDueBy(tenantId, actorId, "2026-10-01").map { it.followUp },
+        )
+        assertFailsWith<ContactNotFoundException> {
+            manager.deleteContact(tenantId, actorId, deletedContactId)
+        }
+        Unit
+    }
+
+    @Test
     fun `translates follow-up ownership and lifecycle conflicts`() = runBlocking {
         val tenantId = randomUuid()
         val actorId = randomUuid()

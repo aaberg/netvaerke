@@ -25,6 +25,7 @@ import netvaerke.manager.network.ContactImageUpdateDto
 import netvaerke.manager.network.ContactImageUploadDto
 import netvaerke.manager.network.ContactInteractionDto
 import netvaerke.manager.network.ContactOverviewDto
+import netvaerke.manager.network.ContactNotFoundException
 import netvaerke.manager.network.ContactFollowUpCadenceDto
 import netvaerke.manager.network.ContactFollowUpCompletionDto
 import netvaerke.manager.network.ContactFollowUpDto
@@ -132,6 +133,66 @@ class WebApplicationTest {
         assertEquals(2, "data-interaction-cancel".toRegex().findAll(overview.bodyAsText()).count())
         assertTrue(overview.bodyAsText().contains("data-interaction-remove"))
         assertTrue(overview.bodyAsText().contains("aria-label=\"Remove interaction\""))
+        assertTrue(overview.bodyAsText().contains("contact-edit-icon"))
+        assertTrue(overview.bodyAsText().contains("aria-label=\"Edit contact\""))
+        assertTrue(overview.bodyAsText().contains("action=\"/contacts/$CONTACT_ID/delete\""))
+        assertTrue(overview.bodyAsText().contains("data-contact-delete-form"))
+        assertTrue(overview.bodyAsText().contains("button button-danger contact-action-button"))
+        assertTrue(overview.bodyAsText().contains("contact-delete-icon"))
+        assertTrue(overview.bodyAsText().contains("aria-label=\"Delete contact\""))
+        assertTrue(overview.bodyAsText().contains("/assets/contact-delete.js"))
+    }
+
+    @Test
+    fun `deletes a contact from the overview and reports an already deleted contact`() = testApplication {
+        val manager = RecordingNetworkManager().apply {
+            overview = ContactOverviewDto(
+                contact = TenantContactDto(CONTACT_ID, "Ada Lovelace", emptyList(), emptyList(), null, null, null),
+                interactions = emptyList(),
+                followUps = emptyList(),
+            )
+        }
+        application {
+            configureWebApplication(config(), membershipManager(), manager, RecordingFileStorage(), authenticatedSession())
+        }
+
+        val overview = client.get("/contacts/$CONTACT_ID")
+        val csrfToken = assertNotNull(
+            Regex("name=\"csrfToken\" value=\"([^\"]+)\"").find(overview.bodyAsText())?.groupValues?.get(1),
+        )
+        val response = client.post("/contacts/$CONTACT_ID/delete") {
+            cookie("netvaerke_csrf", csrfToken)
+            setBody(FormDataContent(Parameters.build { append("csrfToken", csrfToken) }))
+        }
+
+        assertEquals(HttpStatusCode.Found, response.status)
+        assertEquals("/dashboard", response.headers[HttpHeaders.Location])
+        assertEquals(PERSONAL_TENANT_ID, manager.lastTenantId)
+        assertEquals(USER_ID, manager.lastActorId)
+        assertEquals(CONTACT_ID, manager.deletedContactId)
+
+        manager.deleteFailure = ContactNotFoundException()
+        val repeatedResponse = client.post("/contacts/$CONTACT_ID/delete") {
+            cookie("netvaerke_csrf", csrfToken)
+            setBody(FormDataContent(Parameters.build { append("csrfToken", csrfToken) }))
+        }
+
+        assertEquals(HttpStatusCode.NotFound, repeatedResponse.status)
+    }
+
+    @Test
+    fun `rejects contact deletion without a valid csrf token`() = testApplication {
+        val manager = RecordingNetworkManager()
+        application {
+            configureWebApplication(config(), membershipManager(), manager, RecordingFileStorage(), authenticatedSession())
+        }
+
+        val response = client.post("/contacts/$CONTACT_ID/delete") {
+            setBody(FormDataContent(Parameters.build { append("csrfToken", "invalid") }))
+        }
+
+        assertEquals(HttpStatusCode.Forbidden, response.status)
+        assertEquals(null, manager.deletedContactId)
     }
 
     @Test
@@ -438,6 +499,8 @@ class WebApplicationTest {
         var updatedInteraction: UpdateContactInteractionDto? = null
         var interactionContactId: Uuid? = null
         var removedInteractionId: Uuid? = null
+        var deletedContactId: Uuid? = null
+        var deleteFailure: Exception? = null
         var reservedImageKey: String? = null
         var setImageFileKey: String? = null
         var previousImageFileKey: String? = null
@@ -498,7 +561,12 @@ class WebApplicationTest {
             updatedContact = updateContactDto
         }
 
-        override suspend fun deleteContact(tenantId: Uuid, actorId: Uuid, contactId: Uuid) = Unit
+        override suspend fun deleteContact(tenantId: Uuid, actorId: Uuid, contactId: Uuid) {
+            lastTenantId = tenantId
+            lastActorId = actorId
+            deletedContactId = contactId
+            deleteFailure?.let { throw it }
+        }
 
         override suspend fun registerContactInteraction(
             tenantId: Uuid,

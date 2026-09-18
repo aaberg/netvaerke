@@ -173,6 +173,24 @@ internal fun Application.configureWebApplication(
             call.respondContactOverview(config, networkManager, fileStorage, context, contactId)
         }
 
+        post("/contacts/{contactId}/delete") {
+            val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@post
+            val contactId = call.contactIdOrNotFound() ?: return@post
+            val parameters = call.receiveParameters()
+            if (!call.hasValidCsrfToken(parameters["csrfToken"])) {
+                call.respondText("Your form expired. Refresh the page and try again.", status = HttpStatusCode.Forbidden)
+                return@post
+            }
+
+            try {
+                networkManager.deleteContact(context.tenantId, context.user.id, contactId)
+            } catch (failure: Exception) {
+                call.respondContactFailure(failure)
+                return@post
+            }
+            call.respondRedirect("/dashboard")
+        }
+
         post("/contacts/{contactId}/interactions") {
             val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@post
             val contactId = call.contactIdOrNotFound() ?: return@post
