@@ -10,7 +10,7 @@ public object NatsTestBroker {
     private const val clientPort: Int = 4222
 
     private val container: GenericContainer<Nothing> by lazy {
-        GenericContainer<Nothing>(DockerImageName.parse("nats:2.12.11-alpine")).apply {
+        GenericContainer<Nothing>(DockerImageName.parse("nats:2.15.0-alpine")).apply {
             withExposedPorts(clientPort)
             withReuse(true)
         }

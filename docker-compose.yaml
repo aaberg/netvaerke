@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-netvaerke}
@@ -17,7 +17,7 @@ services:
     networks:
       - default
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql
 
   liquibase:
     build:
@@ -34,19 +34,19 @@ services:
       - default
 
   nats:
-    image: nats:2.12.11-alpine
+    image: nats:2.15.0-alpine
     ports:
       - "4222:4222"
       - "8222:8222"
 
   tempo:
-    image: grafana/tempo:2.7.0
+    image: grafana/tempo:3.0.3
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     volumes:
       - ./observability/tempo.local.yaml:/etc/tempo/tempo.yaml:ro,z
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.121.0
+    image: otel/opentelemetry-collector-contrib:0.161.0
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     depends_on:
       - tempo
@@ -57,7 +57,7 @@ services:
       - ./observability/otel-collector.local.yaml:/etc/otelcol-contrib/config.yaml:ro,z
 
   grafana:
-    image: grafana/grafana:12.0.1
+    image: grafana/grafana:13.2.2
     depends_on:
       - tempo
     ports:
@@ -70,7 +70,7 @@ services:
 
 # hanko services
   postgres_hanko:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
 #    ports:
 #      - "5433:5432"
     environment:
@@ -86,7 +86,7 @@ services:
     networks:
       - default
     volumes:
-      - hanko_data:/var/lib/postgresql/data
+      - hanko_data:/var/lib/postgresql
 
   hanko-migrate:
     image: ghcr.io/teamhanko/hanko:v3.0.4
@@ -119,7 +119,7 @@ services:
 
   ## Garage
   garage:
-    image: dxflrs/garage:v2.3.0
+    image: dxflrs/garage:v2.4.1
     container_name: garage
     restart: unless-stopped
     ports:
@@ -142,6 +142,8 @@ networks:
 
 volumes:
   db_data:
+    name: ${COMPOSE_PROJECT_NAME:-netvaerke}_db_data_v18
   hanko_data:
+    name: ${COMPOSE_PROJECT_NAME:-netvaerke}_hanko_data_v18
   garage-meta:
   garage-data:

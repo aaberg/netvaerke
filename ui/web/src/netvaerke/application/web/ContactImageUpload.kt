@@ -11,7 +11,8 @@ import io.ktor.server.request.receiveParameters
 import io.ktor.server.request.receiveMultipart
 import io.ktor.utils.io.core.ByteReadPacket
 import io.ktor.utils.io.core.readBytes
-import io.ktor.utils.io.readRemaining
+import io.ktor.utils.io.readBuffer
+import kotlinx.io.readByteArray
 
 internal data class ContactSubmission(
     val parameters: Parameters,
@@ -47,7 +48,7 @@ internal suspend fun ApplicationCall.receiveContactSubmission(): ContactSubmissi
                     if (image != null || imageError != null) {
                         imageError = "Choose only one contact photo."
                     } else {
-                        val bytes = part.provider().readRemaining(MAX_IMAGE_SIZE_BYTES + 1).toByteArray()
+                        val bytes = part.provider().readBuffer(MAX_IMAGE_SIZE_BYTES + 1).readByteArray()
                         image = bytes.toContactImageUpload().also { upload ->
                             if (upload == null) imageError = imageValidationError(bytes)
                         }
@@ -57,7 +58,7 @@ internal suspend fun ApplicationCall.receiveContactSubmission(): ContactSubmissi
                 else -> Unit
             }
         } finally {
-            part.dispose()
+            part.release()
         }
     }
 

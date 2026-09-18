@@ -1,4 +1,4 @@
-FROM liquibase/liquibase:5.0.1
+FROM liquibase/liquibase:5.0.4
 
 # Install the PostgreSQL driver
 RUN lpm add postgresql --global

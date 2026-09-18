@@ -1,5 +1,5 @@
 -- changeset contact:2
-    ADD COLUMN deleted_at TIMESTAMPTZ;
+ALTER TABLE contact.contact ADD COLUMN deleted_at TIMESTAMPTZ;
 
 DROP INDEX contact.contact_tenant_idx;
 
