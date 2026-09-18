@@ -1,12 +1,13 @@
-FROM eclipse-temurin:21-jdk-jammy AS build
+FROM eclipse-temurin:25-jdk-jammy AS build
+RUN apt-get update && apt-get install --no-install-recommends --yes curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
 COPY . .
 RUN ./kotlin package -m network-manager-application -f executable-jar
 
-FROM eclipse-temurin:21-jre-jammy
+FROM eclipse-temurin:25-jre-jammy
 
-ARG OPENTELEMETRY_JAVA_AGENT_VERSION=2.21.0
+ARG OPENTELEMETRY_JAVA_AGENT_VERSION=2.31.1
 
 RUN useradd --system --uid 10001 network
 WORKDIR /app
