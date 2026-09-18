@@ -41,7 +41,17 @@
                         <p class="contact-work"><#if contact.workTitle??>${contact.workTitle?html}</#if><#if contact.workTitle?? && contact.workOrganization??> · </#if><#if contact.workOrganization??>${contact.workOrganization?html}</#if></p>
                     </#if>
                 </div>
-                <a class="button contact-overview-edit" href="/contacts/${contact.contactId?html}/edit">Edit contact</a>
+                <div class="contact-overview-actions">
+                    <a class="button contact-action-button" href="/contacts/${contact.contactId?html}/edit" aria-label="Edit contact" title="Edit contact">
+                        <span class="contact-action-icon contact-edit-icon" aria-hidden="true"></span>
+                    </a>
+                    <form method="post" action="/contacts/${contact.contactId?html}/delete" data-contact-delete-form>
+                        <input type="hidden" name="csrfToken" value="${csrfToken?html}">
+                        <button class="button button-danger contact-action-button" type="submit" aria-label="Delete contact" title="Delete contact">
+                            <span class="contact-action-icon contact-delete-icon" aria-hidden="true"></span>
+                        </button>
+                    </form>
+                </div>
             </div>
 
             <div class="contact-details">
@@ -161,5 +171,6 @@
     </main>
     <script type="module" src="/assets/hanko.js"></script>
     <script src="/assets/interaction-form.js"></script>
+    <script src="/assets/contact-delete.js"></script>
 </body>
 </html>
