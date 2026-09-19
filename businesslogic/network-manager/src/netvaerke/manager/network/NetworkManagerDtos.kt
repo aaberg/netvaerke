@@ -63,15 +63,32 @@ enum class InteractionChannelDto {
 }
 
 @Serializable
-data class CreateContactFollowUpDto(
-    val dueOn: String,
-    val recurrence: ContactFollowUpCadenceDto?,
-)
+sealed interface CreateContactFollowUpDto {
+    @Serializable
+    data class OneTime(val dueOn: String) : CreateContactFollowUpDto
+
+    @Serializable
+    data class Recurring(
+        val frequency: ContactFollowUpFrequencyDto,
+        val timeZone: String,
+    ) : CreateContactFollowUpDto
+}
+
+@Serializable
+enum class ContactFollowUpFrequencyDto {
+    WEEKLY,
+    MONTHLY,
+    EVERY_TWO_MONTHS,
+    QUARTERLY,
+    TWICE_A_YEAR,
+    YEARLY,
+}
 
 @Serializable
 data class ContactFollowUpCadenceDto(
     val amount: Int,
     val unit: ContactFollowUpIntervalUnitDto,
+    val frequency: ContactFollowUpFrequencyDto?,
 )
 
 @Serializable
@@ -98,6 +115,12 @@ enum class ContactFollowUpStatusDto {
     DONE,
     CANCELLED,
 }
+
+@Serializable
+data class CompleteContactFollowUpDto(
+    val timeZone: String,
+    val interaction: CreateContactInteractionDto?,
+)
 
 @Serializable
 data class ContactFollowUpCompletionDto(

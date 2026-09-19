@@ -19,11 +19,32 @@ import io.ktor.server.routing.routing
 import io.ktor.server.http.content.staticResources
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Base64
+import netvaerke.ifx.IfxRemoteException
+import netvaerke.manager.membership.GetProfileRequest
+import netvaerke.manager.membership.MembershipManager
+import netvaerke.manager.membership.ProfileDto
+import netvaerke.manager.membership.ProfileNotFoundException
+import netvaerke.manager.membership.RegisterProfileRequest
+import netvaerke.manager.membership.TenantTypeDto
+import netvaerke.manager.network.ActiveContactFollowUpRecurrenceException
 import netvaerke.manager.network.AuthorizationDeniedException
+import netvaerke.manager.network.CompleteContactFollowUpDto
+import netvaerke.manager.network.ContactFollowUpAlreadyCancelledException
+import netvaerke.manager.network.ContactFollowUpAlreadyCompletedException
+import netvaerke.manager.network.ContactFollowUpCancelledException
+import netvaerke.manager.network.ContactFollowUpCadenceDto
+import netvaerke.manager.network.ContactFollowUpDto
+import netvaerke.manager.network.ContactFollowUpNotFoundException
+import netvaerke.manager.network.ContactFollowUpNotOpenException
+import netvaerke.manager.network.ContactFollowUpNotRecurringException
+import netvaerke.manager.network.ContactFollowUpStatusDto
 import netvaerke.manager.network.ContactInteractionDto
 import netvaerke.manager.network.ContactInteractionNotFoundException
 import netvaerke.manager.network.ContactNotFoundException
@@ -32,13 +53,6 @@ import netvaerke.manager.network.EmailAddressDto
 import netvaerke.manager.network.NetworkManager
 import netvaerke.manager.network.PhoneNumberDto
 import netvaerke.manager.network.TenantContactListItemDto
-import netvaerke.ifx.IfxRemoteException
-import netvaerke.manager.membership.GetProfileRequest
-import netvaerke.manager.membership.MembershipManager
-import netvaerke.manager.membership.ProfileDto
-import netvaerke.manager.membership.ProfileNotFoundException
-import netvaerke.manager.membership.RegisterProfileRequest
-import netvaerke.manager.membership.TenantTypeDto
 import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.hours
 
@@ -48,6 +62,7 @@ internal fun Application.configureWebApplication(
     networkManager: NetworkManager,
     fileStorage: FileStorage,
     sessionValidator: SessionValidator = HankoSessionValidator(config.hankoValidationApiUrl),
+    clock: Clock = Clock.systemUTC(),
 ) {
     install(FreeMarker) {
         templateLoader = ClassTemplateLoader(Application::class.java.classLoader, "templates")
@@ -70,8 +85,19 @@ internal fun Application.configureWebApplication(
 
         get("/dashboard") {
             val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@get
+            val today = LocalDate.now(clock.withZone(context.timeZone))
             val contacts = try {
                 networkManager.getTenantContacts(context.tenantId, context.user.id)
+            } catch (failure: Exception) {
+                call.respondContactFailure(failure)
+                return@get
+            }
+            val followUps = try {
+                networkManager.getOpenContactFollowUpsDueBy(
+                    context.tenantId,
+                    context.user.id,
+                    today.plusDays(DASHBOARD_FOLLOW_UP_DAYS).toString(),
+                )
             } catch (failure: Exception) {
                 call.respondContactFailure(failure)
                 return@get
@@ -81,6 +107,14 @@ internal fun Application.configureWebApplication(
                 mapOf(
                     "profile" to context.profile,
                     "contacts" to contacts.map { it.toContactListItem(fileStorage, config.fileStorageBucket) },
+                    "followUpSections" to followUps.toDashboardFollowUpSections(
+                        fileStorage,
+                        config.fileStorageBucket,
+                        today,
+                    ),
+                    "followUpMessage" to call.followUpMessage(),
+                    "csrfToken" to call.csrfToken(config.secureCookies),
+                    "timeZone" to context.timeZone.id,
                     "hankoApiUrl" to config.hankoApiUrl,
                     "hankoCookieDomain" to config.hankoCookieDomain,
                 ),
@@ -170,7 +204,27 @@ internal fun Application.configureWebApplication(
         get("/contacts/{contactId}") {
             val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@get
             val contactId = call.contactIdOrNotFound() ?: return@get
-            call.respondContactOverview(config, networkManager, fileStorage, context, contactId)
+            val query = call.request.queryParameters
+            val selectedCompleteFollowUpId = query["completeFollowUp"].parseFollowUpId()
+            val selectedRescheduleFollowUpId = query["rescheduleFollowUp"].parseFollowUpId()
+            val selectedFrequencyFollowUpId = query["editFrequencyFollowUp"].parseFollowUpId()
+            call.respondContactOverview(
+                config = config,
+                networkManager = networkManager,
+                fileStorage = fileStorage,
+                context = context,
+                contactId = contactId,
+                selectedCompleteFollowUpId = selectedCompleteFollowUpId,
+                selectedRescheduleFollowUpId = selectedRescheduleFollowUpId,
+                selectedFrequencyFollowUpId = selectedFrequencyFollowUpId,
+                followUpMode = when {
+                    selectedCompleteFollowUpId != null -> FollowUpFormMode.COMPLETE_WITH_INTERACTION
+                    selectedRescheduleFollowUpId != null -> FollowUpFormMode.RESCHEDULE
+                    selectedFrequencyFollowUpId != null -> FollowUpFormMode.FREQUENCY
+                    else -> null
+                },
+                followUpMessage = call.followUpMessage(),
+            )
         }
 
         post("/contacts/{contactId}/delete") {
@@ -190,6 +244,329 @@ internal fun Application.configureWebApplication(
             }
             call.respondRedirect("/dashboard")
         }
+        post("/contacts/{contactId}/follow-ups") {
+            val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@post
+            val contactId = call.contactIdOrNotFound() ?: return@post
+            val parameters = call.receiveParameters()
+            if (!call.hasValidCsrfToken(parameters["csrfToken"])) {
+                call.respondText("Your form expired. Refresh the page and try again.", status = HttpStatusCode.Forbidden)
+                return@post
+            }
+
+            val form = parameters.toContactFollowUpForm()
+            val timeZone = parameters.submittedTimeZone(context.timeZone)
+            val validationError = form.validationError()
+                ?: if (form.recurrence == ContactFollowUpForm.RECURRENCE_RECURRING && timeZone.toZoneIdOrNull() == null) {
+                    "We could not determine your local time zone. Refresh the page and try again."
+                } else {
+                    null
+                }
+            if (validationError != null) {
+                call.respondContactOverview(
+                    config = config,
+                    networkManager = networkManager,
+                    fileStorage = fileStorage,
+                    context = context,
+                    contactId = contactId,
+                    newFollowUp = form,
+                    followUpMode = FollowUpFormMode.CREATE,
+                    followUpError = validationError,
+                )
+                return@post
+            }
+
+            try {
+                networkManager.registerContactFollowUp(
+                    context.tenantId,
+                    context.user.id,
+                    contactId,
+                    form.toCreateDto(timeZone),
+                )
+            } catch (failure: Exception) {
+                val error = failure.followUpFormError()
+                if (error != null) {
+                    call.respondContactOverview(
+                        config = config,
+                        networkManager = networkManager,
+                        fileStorage = fileStorage,
+                        context = context,
+                        contactId = contactId,
+                        newFollowUp = form,
+                        followUpMode = FollowUpFormMode.CREATE,
+                        followUpError = error,
+                    )
+                } else {
+                    call.respondContactFailure(failure)
+                }
+                return@post
+            }
+            call.respondRedirect("/contacts/$contactId?followUpCreated=true")
+        }
+
+        post("/contacts/{contactId}/follow-ups/{followUpId}/reschedule") {
+            val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@post
+            val contactId = call.contactIdOrNotFound() ?: return@post
+            val followUpId = call.followUpIdOrNotFound() ?: return@post
+            val parameters = call.receiveParameters()
+            if (!call.hasValidCsrfToken(parameters["csrfToken"])) {
+                call.respondText("Your form expired. Refresh the page and try again.", status = HttpStatusCode.Forbidden)
+                return@post
+            }
+
+            val dueOn = parameters["dueOn"]?.trim().orEmpty()
+            val validationError = if (dueOn.toLocalDateOrNull() == null) "Enter a valid due date." else null
+            if (validationError != null) {
+                call.respondContactOverview(
+                    config = config,
+                    networkManager = networkManager,
+                    fileStorage = fileStorage,
+                    context = context,
+                    contactId = contactId,
+                    selectedRescheduleFollowUpId = followUpId,
+                    rescheduleDueOn = dueOn,
+                    followUpMode = FollowUpFormMode.RESCHEDULE,
+                    followUpError = validationError,
+                )
+                return@post
+            }
+
+            try {
+                networkManager.rescheduleContactFollowUp(
+                    context.tenantId,
+                    context.user.id,
+                    contactId,
+                    followUpId,
+                    dueOn,
+                )
+            } catch (failure: Exception) {
+                val error = failure.followUpFormError()
+                if (error != null) {
+                    call.respondContactOverview(
+                        config = config,
+                        networkManager = networkManager,
+                        fileStorage = fileStorage,
+                        context = context,
+                        contactId = contactId,
+                        selectedRescheduleFollowUpId = followUpId,
+                        rescheduleDueOn = dueOn,
+                        followUpMode = FollowUpFormMode.RESCHEDULE,
+                        followUpError = error,
+                    )
+                } else {
+                    call.respondContactFailure(failure)
+                }
+                return@post
+            }
+            call.respondRedirect("/contacts/$contactId?followUpUpdated=rescheduled")
+        }
+
+        post("/contacts/{contactId}/follow-ups/{followUpId}/frequency") {
+            val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@post
+            val contactId = call.contactIdOrNotFound() ?: return@post
+            val followUpId = call.followUpIdOrNotFound() ?: return@post
+            val parameters = call.receiveParameters()
+            if (!call.hasValidCsrfToken(parameters["csrfToken"])) {
+                call.respondText("Your form expired. Refresh the page and try again.", status = HttpStatusCode.Forbidden)
+                return@post
+            }
+
+            val form = parameters.toContactFollowUpFrequencyForm()
+            val validationError = form.validationError()
+            if (validationError != null) {
+                call.respondContactOverview(
+                    config = config,
+                    networkManager = networkManager,
+                    fileStorage = fileStorage,
+                    context = context,
+                    contactId = contactId,
+                    selectedFrequencyFollowUpId = followUpId,
+                    frequencyForm = form,
+                    followUpMode = FollowUpFormMode.FREQUENCY,
+                    followUpError = validationError,
+                )
+                return@post
+            }
+
+            try {
+                networkManager.changeContactFollowUpFrequency(
+                    context.tenantId,
+                    context.user.id,
+                    contactId,
+                    followUpId,
+                    form.toDto(),
+                )
+            } catch (failure: Exception) {
+                val error = failure.followUpFormError()
+                if (error != null) {
+                    call.respondContactOverview(
+                        config = config,
+                        networkManager = networkManager,
+                        fileStorage = fileStorage,
+                        context = context,
+                        contactId = contactId,
+                        selectedFrequencyFollowUpId = followUpId,
+                        frequencyForm = form,
+                        followUpMode = FollowUpFormMode.FREQUENCY,
+                        followUpError = error,
+                    )
+                } else {
+                    call.respondContactFailure(failure)
+                }
+                return@post
+            }
+            call.respondRedirect("/contacts/$contactId?followUpUpdated=frequency")
+        }
+
+        post("/contacts/{contactId}/follow-ups/{followUpId}/complete") {
+            val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@post
+            val contactId = call.contactIdOrNotFound() ?: return@post
+            val followUpId = call.followUpIdOrNotFound() ?: return@post
+            val parameters = call.receiveParameters()
+            if (!call.hasValidCsrfToken(parameters["csrfToken"])) {
+                call.respondText("Your form expired. Refresh the page and try again.", status = HttpStatusCode.Forbidden)
+                return@post
+            }
+
+            val timeZone = parameters.submittedTimeZone(context.timeZone)
+            if (timeZone.toZoneIdOrNull() == null) {
+                call.respondContactOverview(
+                    config = config,
+                    networkManager = networkManager,
+                    fileStorage = fileStorage,
+                    context = context,
+                    contactId = contactId,
+                    selectedCompleteFollowUpId = followUpId,
+                    followUpMode = FollowUpFormMode.COMPLETE,
+                    followUpError = "We could not determine your local time zone. Refresh the page and try again.",
+                )
+                return@post
+            }
+
+            val completion = try {
+                networkManager.completeContactFollowUp(
+                    context.tenantId,
+                    context.user.id,
+                    contactId,
+                    followUpId,
+                    CompleteContactFollowUpDto(timeZone = timeZone, interaction = null),
+                )
+            } catch (failure: Exception) {
+                val error = failure.followUpFormError()
+                if (error != null) {
+                    call.respondContactOverview(
+                        config = config,
+                        networkManager = networkManager,
+                        fileStorage = fileStorage,
+                        context = context,
+                        contactId = contactId,
+                        selectedCompleteFollowUpId = followUpId,
+                        followUpMode = FollowUpFormMode.COMPLETE,
+                        followUpError = error,
+                    )
+                } else {
+                    call.respondContactFailure(failure)
+                }
+                return@post
+            }
+            call.respondRedirect(followUpCompletionRedirect(contactId, completion, parameters["returnTo"]))
+        }
+
+        post("/contacts/{contactId}/follow-ups/{followUpId}/complete-with-interaction") {
+            val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@post
+            val contactId = call.contactIdOrNotFound() ?: return@post
+            val followUpId = call.followUpIdOrNotFound() ?: return@post
+            val parameters = call.receiveParameters()
+            if (!call.hasValidCsrfToken(parameters["csrfToken"])) {
+                call.respondText("Your form expired. Refresh the page and try again.", status = HttpStatusCode.Forbidden)
+                return@post
+            }
+
+            val form = parameters.toContactInteractionForm()
+            val timeZone = parameters.submittedTimeZone(context.timeZone)
+            val validationError = form.validationError()
+                ?: if (timeZone.toZoneIdOrNull() == null) {
+                    "We could not determine your local time zone. Refresh the page and try again."
+                } else {
+                    null
+                }
+            if (validationError != null) {
+                call.respondContactOverview(
+                    config = config,
+                    networkManager = networkManager,
+                    fileStorage = fileStorage,
+                    context = context,
+                    contactId = contactId,
+                    newInteraction = form,
+                    selectedCompleteFollowUpId = followUpId,
+                    followUpMode = FollowUpFormMode.COMPLETE_WITH_INTERACTION,
+                    followUpError = validationError,
+                )
+                return@post
+            }
+
+            val completion = try {
+                networkManager.completeContactFollowUp(
+                    context.tenantId,
+                    context.user.id,
+                    contactId,
+                    followUpId,
+                    CompleteContactFollowUpDto(timeZone = timeZone, interaction = form.toCreateDto()),
+                )
+            } catch (failure: Exception) {
+                val error = failure.followUpFormError()
+                if (error != null) {
+                    call.respondContactOverview(
+                        config = config,
+                        networkManager = networkManager,
+                        fileStorage = fileStorage,
+                        context = context,
+                        contactId = contactId,
+                        newInteraction = form,
+                        selectedCompleteFollowUpId = followUpId,
+                        followUpMode = FollowUpFormMode.COMPLETE_WITH_INTERACTION,
+                        followUpError = error,
+                    )
+                } else {
+                    call.respondContactFailure(failure)
+                }
+                return@post
+            }
+            call.respondRedirect(followUpCompletionRedirect(contactId, completion, null))
+        }
+
+        post("/contacts/{contactId}/follow-ups/{followUpId}/cancel") {
+            val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@post
+            val contactId = call.contactIdOrNotFound() ?: return@post
+            val followUpId = call.followUpIdOrNotFound() ?: return@post
+            val parameters = call.receiveParameters()
+            if (!call.hasValidCsrfToken(parameters["csrfToken"])) {
+                call.respondText("Your form expired. Refresh the page and try again.", status = HttpStatusCode.Forbidden)
+                return@post
+            }
+
+            try {
+                networkManager.cancelContactFollowUp(context.tenantId, context.user.id, contactId, followUpId)
+            } catch (failure: Exception) {
+                val error = failure.followUpFormError()
+                if (error != null) {
+                    call.respondContactOverview(
+                        config = config,
+                        networkManager = networkManager,
+                        fileStorage = fileStorage,
+                        context = context,
+                        contactId = contactId,
+                        selectedCompleteFollowUpId = followUpId,
+                        followUpMode = FollowUpFormMode.COMPLETE,
+                        followUpError = error,
+                    )
+                } else {
+                    call.respondContactFailure(failure)
+                }
+                return@post
+            }
+            call.respondRedirect("/contacts/$contactId?followUpUpdated=cancelled")
+        }
+
 
         post("/contacts/{contactId}/interactions") {
             val context = call.personalTenantContext(sessionValidator, membershipManager) ?: return@post
@@ -387,6 +764,7 @@ private data class PersonalTenantContext(
     val user: AuthenticatedUser,
     val profile: ProfileDto,
     val tenantId: kotlin.uuid.Uuid,
+    val timeZone: ZoneId,
 )
 
 private suspend fun ApplicationCall.personalTenantContext(
@@ -395,7 +773,12 @@ private suspend fun ApplicationCall.personalTenantContext(
 ): PersonalTenantContext? {
     val user = authenticatedUser(validator) ?: return null
     return when (val lookup = loadProfile(membershipManager, user)) {
-        is ProfileLookup.Found -> PersonalTenantContext(user, lookup.profile, lookup.personalTenantId)
+        is ProfileLookup.Found -> PersonalTenantContext(
+            user = user,
+            profile = lookup.profile,
+            tenantId = lookup.personalTenantId,
+            timeZone = browserTimeZone(),
+        )
         ProfileLookup.Missing -> {
             respondRedirect("/onboarding")
             null
@@ -407,6 +790,9 @@ private suspend fun ApplicationCall.personalTenantContext(
         }
     }
 }
+
+private fun ApplicationCall.browserTimeZone(): ZoneId =
+    request.cookies[TIME_ZONE_COOKIE]?.toZoneIdOrNull() ?: ZoneOffset.UTC
 
 private suspend fun ApplicationCall.respondContactForm(
     config: ApplicationConfig,
@@ -440,6 +826,15 @@ private suspend fun ApplicationCall.respondContactOverview(
     contactId: kotlin.uuid.Uuid,
     newInteraction: ContactInteractionForm = ContactInteractionForm(),
     error: String? = null,
+    newFollowUp: ContactFollowUpForm? = null,
+    followUpError: String? = null,
+    followUpMode: String? = null,
+    selectedCompleteFollowUpId: kotlin.uuid.Uuid? = null,
+    selectedRescheduleFollowUpId: kotlin.uuid.Uuid? = null,
+    selectedFrequencyFollowUpId: kotlin.uuid.Uuid? = null,
+    rescheduleDueOn: String? = null,
+    frequencyForm: ContactFollowUpFrequencyForm? = null,
+    followUpMessage: String? = null,
 ) {
     val overview = try {
         networkManager.getContactOverview(context.tenantId, context.user.id, contactId)
@@ -450,14 +845,53 @@ private suspend fun ApplicationCall.respondContactOverview(
         contactNotFound()
         return
     }
+    val openFollowUps = overview.followUps
+        .filter { it.status == ContactFollowUpStatusDto.OPEN }
+        .map(ContactFollowUpOverview::from)
+        .sortedWith(compareBy<ContactFollowUpOverview> { it.dueOn }.thenBy { it.followUpId })
+    val followUpGroups = listOf(
+        ContactFollowUpGroup(
+            label = "Recurring follow-up",
+            recurring = true,
+            items = openFollowUps.filter { it.isRecurring },
+        ),
+        ContactFollowUpGroup(
+            label = "One-time follow-ups",
+            recurring = false,
+            items = openFollowUps.filterNot { it.isRecurring },
+        ),
+    )
+    val selectedReschedule = selectedRescheduleFollowUpId?.toString()
+        ?.let { id -> openFollowUps.firstOrNull { it.followUpId == id } }
+    val selectedFrequency = overview.followUps.firstOrNull {
+        it.followUpId == selectedFrequencyFollowUpId && it.status == ContactFollowUpStatusDto.OPEN
+    }
+    val resolvedMode = followUpMode ?: when {
+        selectedCompleteFollowUpId != null -> FollowUpFormMode.COMPLETE
+        selectedRescheduleFollowUpId != null -> FollowUpFormMode.RESCHEDULE
+        selectedFrequencyFollowUpId != null -> FollowUpFormMode.FREQUENCY
+        else -> null
+    }
     respondPage(
         "contact-overview.ftl",
         mapOf(
             "contact" to overview.toContactOverviewContact(fileStorage, config.fileStorageBucket),
             "interactions" to overview.interactions.map(ContactInteractionOverview::from),
+            "followUpGroups" to followUpGroups,
             "newInteraction" to newInteraction,
             "channels" to interactionChannelOptions(),
             "error" to error,
+            "newFollowUp" to (newFollowUp ?: ContactFollowUpForm.forToday(LocalDate.now(context.timeZone))),
+            "followUpFrequencies" to contactFollowUpFrequencyOptions(),
+            "followUpError" to followUpError,
+            "followUpMode" to resolvedMode,
+            "selectedCompleteFollowUpId" to selectedCompleteFollowUpId?.toString(),
+            "selectedRescheduleFollowUpId" to selectedRescheduleFollowUpId?.toString(),
+            "selectedFrequencyFollowUpId" to selectedFrequencyFollowUpId?.toString(),
+            "rescheduleDueOn" to (rescheduleDueOn ?: selectedReschedule?.dueOn),
+            "frequencyForm" to (frequencyForm ?: selectedFrequency?.let(ContactFollowUpFrequencyForm::from)),
+            "followUpMessage" to followUpMessage,
+            "timeZone" to context.timeZone.id,
             "csrfToken" to csrfToken(config.secureCookies),
             "hankoApiUrl" to config.hankoApiUrl,
             "hankoCookieDomain" to config.hankoCookieDomain,
@@ -516,6 +950,110 @@ internal data class ContactInteractionOverview(
             )
         }
     }
+}
+
+private object FollowUpFormMode {
+    const val CREATE = "CREATE"
+    const val RESCHEDULE = "RESCHEDULE"
+    const val FREQUENCY = "FREQUENCY"
+    const val COMPLETE = "COMPLETE"
+    const val COMPLETE_WITH_INTERACTION = "COMPLETE_WITH_INTERACTION"
+}
+
+internal data class DashboardFollowUp(
+    val followUpId: String,
+    val contactId: String,
+    val contactName: String,
+    val imageUrl: String?,
+    val dueOn: String,
+    val dueLabel: String,
+    val typeLabel: String,
+    val frequencyLabel: String?,
+)
+
+internal data class DashboardFollowUpSection(
+    val label: String,
+    val items: List<DashboardFollowUp>,
+)
+
+internal data class ContactFollowUpGroup(
+    val label: String,
+    val recurring: Boolean,
+    val items: List<ContactFollowUpOverview>,
+) {
+    fun isRecurring(): Boolean = recurring
+}
+
+internal data class ContactFollowUpOverview(
+    val followUpId: String,
+    val dueOn: String,
+    val dueLabel: String,
+    val recurrenceLabel: String,
+    val statusLabel: String,
+    val isRecurring: Boolean,
+) {
+    companion object {
+        fun from(followUp: ContactFollowUpDto): ContactFollowUpOverview {
+            val recurrence = followUp.recurrence
+            return ContactFollowUpOverview(
+                followUpId = followUp.followUpId.toString(),
+                dueOn = followUp.dueOn,
+                dueLabel = followUp.dueOn.toLocalDateOrNull()?.format(FOLLOW_UP_DATE_FORMATTER) ?: followUp.dueOn,
+                recurrenceLabel = recurrence?.displayName() ?: "One-time",
+                statusLabel = followUp.status.displayName(),
+                isRecurring = recurrence != null,
+            )
+        }
+    }
+}
+
+private fun List<netvaerke.manager.network.DueContactFollowUpDto>.toDashboardFollowUpSections(
+    fileStorage: FileStorage,
+    bucket: String,
+    today: LocalDate,
+): List<DashboardFollowUpSection> {
+    val grouped = mapNotNull { due ->
+        val dueDate = due.followUp.dueOn.toLocalDateOrNull() ?: return@mapNotNull null
+        DashboardFollowUp(
+            followUpId = due.followUp.followUpId.toString(),
+            contactId = due.contact.contactId.toString(),
+            contactName = due.contact.name,
+            imageUrl = due.contact.image?.fileKey?.let { fileStorage.createImageUrl(bucket, it) },
+            dueOn = due.followUp.dueOn,
+            dueLabel = dueDate.format(FOLLOW_UP_DATE_FORMATTER),
+            typeLabel = if (due.followUp.recurrence == null) "One-time" else "Recurring",
+            frequencyLabel = due.followUp.recurrence?.displayName(),
+        ) to dueDate
+    }.groupBy { (_, dueDate) ->
+        when {
+            dueDate < today -> "OVERDUE"
+            dueDate == today -> "TODAY"
+            else -> "UPCOMING"
+        }
+    }
+    return listOf(
+        "OVERDUE" to "Overdue",
+        "TODAY" to "Today",
+        "UPCOMING" to "Next 7 days",
+    ).mapNotNull { (key, label) ->
+        grouped[key]
+            ?.sortedWith(compareBy<Pair<DashboardFollowUp, LocalDate>> { it.second }.thenBy { it.first.contactName })
+            ?.map { it.first }
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { DashboardFollowUpSection(label, it) }
+    }
+}
+
+private fun ContactFollowUpCadenceDto.displayName(): String {
+    frequency?.let { return it.displayName() }
+    val singular = unit.name.lowercase().removeSuffix("s")
+    return "Every $amount ${if (amount == 1) singular else "${singular}s"}"
+}
+
+private fun ContactFollowUpStatusDto.displayName(): String = when (this) {
+    ContactFollowUpStatusDto.OPEN -> "Open"
+    ContactFollowUpStatusDto.DONE -> "Completed"
+    ContactFollowUpStatusDto.CANCELLED -> "Cancelled"
 }
 
 private fun ContactOverviewDto.toContactOverviewContact(fileStorage: FileStorage, bucket: String): ContactOverviewContact =
@@ -594,6 +1132,79 @@ private suspend fun ApplicationCall.interactionIdOrNotFound(): kotlin.uuid.Uuid?
         interactionNotFound()
         return null
     }
+private suspend fun ApplicationCall.followUpIdOrNotFound(): kotlin.uuid.Uuid? =
+    runCatching { kotlin.uuid.Uuid.parse(parameters["followUpId"].orEmpty()) }.getOrElse {
+        followUpNotFound()
+        return null
+    }
+
+private fun String?.parseFollowUpId(): kotlin.uuid.Uuid? =
+    this?.let { runCatching { kotlin.uuid.Uuid.parse(it) }.getOrNull() }
+
+private fun io.ktor.http.Parameters.submittedTimeZone(fallback: ZoneId): String =
+    this["timeZone"]?.trim().takeUnless { it.isNullOrBlank() } ?: fallback.id
+
+private fun String.toZoneIdOrNull(): ZoneId? = runCatching { ZoneId.of(this) }.getOrNull()
+
+private fun ApplicationCall.followUpMessage(): String? {
+    val query = request.queryParameters
+    return when {
+        query["followUpCreated"] == "true" -> "Follow-up scheduled."
+        query["followUpUpdated"] == "rescheduled" -> "Follow-up rescheduled."
+        query["followUpUpdated"] == "frequency" -> "Follow-up frequency updated."
+        query["followUpUpdated"] == "cancelled" -> "Follow-up cancelled."
+        query["followUpCompleted"] != null -> {
+            val next = query["followUpCompleted"].orEmpty().toLocalDateOrNull()
+            if (next == null) {
+                "Follow-up completed."
+            } else {
+                "Follow-up completed. Next due ${next.format(FOLLOW_UP_DATE_FORMATTER)}."
+            }
+        }
+        else -> null
+    }
+}
+
+private fun followUpCompletionRedirect(
+    contactId: kotlin.uuid.Uuid,
+    completion: netvaerke.manager.network.ContactFollowUpCompletionDto,
+    returnTo: String?,
+): String {
+    val destination = if (returnTo == "dashboard") "/dashboard" else "/contacts/$contactId"
+    return "$destination?followUpCompleted=${completion.next?.dueOn.orEmpty()}"
+}
+
+private fun Exception.followUpFormError(): String? {
+    val remoteType = (this as? IfxRemoteException)?.remoteType
+    return when {
+        this is ActiveContactFollowUpRecurrenceException ||
+            remoteType == ActiveContactFollowUpRecurrenceException::class.qualifiedName ->
+            "This contact already has a repeating follow-up."
+        this is ContactFollowUpNotOpenException ||
+            remoteType == ContactFollowUpNotOpenException::class.qualifiedName ->
+            "This follow-up is no longer open. Refresh the page and try again."
+        this is ContactFollowUpNotRecurringException ||
+            remoteType == ContactFollowUpNotRecurringException::class.qualifiedName ->
+            "This follow-up is not repeating."
+        this is ContactFollowUpAlreadyCompletedException ||
+            remoteType == ContactFollowUpAlreadyCompletedException::class.qualifiedName ->
+            "This follow-up was already completed. Refresh the page and try again."
+        this is ContactFollowUpAlreadyCancelledException ||
+            remoteType == ContactFollowUpAlreadyCancelledException::class.qualifiedName ->
+            "This follow-up was already cancelled. Refresh the page and try again."
+        this is ContactFollowUpCancelledException ||
+            remoteType == ContactFollowUpCancelledException::class.qualifiedName ->
+            "This follow-up was cancelled. Refresh the page and try again."
+        remoteType == "netvaerke.manager.network.InvalidContactFollowUpTimeZoneException" ->
+            "We could not determine your local time zone. Refresh the page and try again."
+        else -> null
+    }
+}
+
+private fun Exception.isFollowUpNotFound(): Boolean =
+    this is ContactFollowUpNotFoundException ||
+        (this as? IfxRemoteException)?.remoteType == ContactFollowUpNotFoundException::class.qualifiedName
+
 
 private suspend fun ApplicationCall.respondContactFailure(failure: Exception) {
     when {
@@ -604,6 +1215,7 @@ private suspend fun ApplicationCall.respondContactFailure(failure: Exception) {
 
         failure is ContactNotFoundException -> contactNotFound()
         failure is ContactInteractionNotFoundException -> interactionNotFound()
+        failure.isFollowUpNotFound() -> followUpNotFound()
         else -> when ((failure as? IfxRemoteException)?.remoteType) {
             AuthorizationDeniedException::class.qualifiedName -> respondText(
                 "You do not have permission to manage these contacts.",
@@ -612,6 +1224,7 @@ private suspend fun ApplicationCall.respondContactFailure(failure: Exception) {
 
             ContactNotFoundException::class.qualifiedName -> contactNotFound()
             ContactInteractionNotFoundException::class.qualifiedName -> interactionNotFound()
+            ContactFollowUpNotFoundException::class.qualifiedName -> followUpNotFound()
             else -> serviceUnavailable()
         }
     }
@@ -621,6 +1234,9 @@ private suspend fun ApplicationCall.contactNotFound() {
     respondText("Contact not found.", status = HttpStatusCode.NotFound)
 }
 
+private suspend fun ApplicationCall.followUpNotFound() {
+    respondText("Follow-up not found.", status = HttpStatusCode.NotFound)
+}
 private suspend fun ApplicationCall.interactionNotFound() {
     respondText("Interaction not found.", status = HttpStatusCode.NotFound)
 }
@@ -693,3 +1309,7 @@ private const val CSRF_COOKIE_NAME = "netvaerke_csrf"
 private val EMAIL_PATTERN = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
 
 private val INTERACTION_TIMESTAMP_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM uuuu, HH:mm 'UTC'")
+private const val TIME_ZONE_COOKIE = "netvaerke_timezone"
+private const val DASHBOARD_FOLLOW_UP_DAYS = 7L
+
+private val FOLLOW_UP_DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM uuuu")

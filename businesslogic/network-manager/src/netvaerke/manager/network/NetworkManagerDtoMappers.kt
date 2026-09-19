@@ -9,7 +9,6 @@ import netvaerke.access.engagement.FollowUpCadence
 import netvaerke.access.engagement.FollowUpCompletion
 import netvaerke.access.engagement.FollowUpIntervalUnit
 import netvaerke.access.engagement.FollowUpSchedule
-import netvaerke.access.engagement.RegisterFollowUp
 import netvaerke.access.contact.Contact
 import netvaerke.access.contact.ContactImage
 import netvaerke.access.contact.EmailAddress
@@ -102,20 +101,14 @@ internal fun Interaction.update(update: UpdateContactInteractionDto): Interactio
     occurredAt = update.occurredAt.toInstant("Interaction occurrence time"),
 )
 
-internal fun CreateContactFollowUpDto.toRegistration(
-    contactId: kotlin.uuid.Uuid,
-    followUpId: kotlin.uuid.Uuid,
-): RegisterFollowUp = RegisterFollowUp(
-    id = followUpId,
-    resourceId = contactId,
-    dueOn = dueOn.toLocalDate("Follow-up due date"),
-    schedule = recurrence?.let { FollowUpSchedule.Recurring(it.toCadence()) } ?: FollowUpSchedule.OneTime,
-)
-
-internal fun ContactFollowUpCadenceDto.toCadence(): FollowUpCadence = FollowUpCadence(
-    amount = amount,
-    unit = FollowUpIntervalUnit.valueOf(unit.name),
-)
+internal fun ContactFollowUpFrequencyDto.toCadence(): FollowUpCadence = when (this) {
+    ContactFollowUpFrequencyDto.WEEKLY -> FollowUpCadence(1, FollowUpIntervalUnit.WEEKS)
+    ContactFollowUpFrequencyDto.MONTHLY -> FollowUpCadence(1, FollowUpIntervalUnit.MONTHS)
+    ContactFollowUpFrequencyDto.EVERY_TWO_MONTHS -> FollowUpCadence(2, FollowUpIntervalUnit.MONTHS)
+    ContactFollowUpFrequencyDto.QUARTERLY -> FollowUpCadence(3, FollowUpIntervalUnit.MONTHS)
+    ContactFollowUpFrequencyDto.TWICE_A_YEAR -> FollowUpCadence(6, FollowUpIntervalUnit.MONTHS)
+    ContactFollowUpFrequencyDto.YEARLY -> FollowUpCadence(1, FollowUpIntervalUnit.YEARS)
+}
 
 internal fun FollowUp.toDto(): ContactFollowUpDto = ContactFollowUpDto(
     followUpId = id,
@@ -137,6 +130,19 @@ internal fun FollowUpCompletion.toDto(): ContactFollowUpCompletionDto = ContactF
 private fun FollowUpCadence.toDto(): ContactFollowUpCadenceDto = ContactFollowUpCadenceDto(
     amount = amount,
     unit = ContactFollowUpIntervalUnitDto.valueOf(unit.name),
+    frequency = when (unit) {
+        FollowUpIntervalUnit.DAYS -> if (amount == 7) ContactFollowUpFrequencyDto.WEEKLY else null
+        FollowUpIntervalUnit.WEEKS -> if (amount == 1) ContactFollowUpFrequencyDto.WEEKLY else null
+        FollowUpIntervalUnit.MONTHS -> when (amount) {
+            1 -> ContactFollowUpFrequencyDto.MONTHLY
+            2 -> ContactFollowUpFrequencyDto.EVERY_TWO_MONTHS
+            3 -> ContactFollowUpFrequencyDto.QUARTERLY
+            6 -> ContactFollowUpFrequencyDto.TWICE_A_YEAR
+            12 -> ContactFollowUpFrequencyDto.YEARLY
+            else -> null
+        }
+        FollowUpIntervalUnit.YEARS -> if (amount == 1) ContactFollowUpFrequencyDto.YEARLY else null
+    },
 )
 
 private fun InteractionChannel.toDto(): InteractionChannelDto = InteractionChannelDto.valueOf(name)

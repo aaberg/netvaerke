@@ -13,16 +13,19 @@ class InteractionRepository(
 ) {
     fun registerInteraction(interaction: InteractionEntity): Boolean =
         dataSource.connection.use { connection ->
-            connection.prepareStatement(REGISTER_INTERACTION).use { statement ->
-                statement.setObject(1, interaction.id.toJavaUuid())
-                statement.setObject(2, interaction.tenantId.toJavaUuid())
-                statement.setObject(3, interaction.resourceId.toJavaUuid())
-                statement.setObject(4, interaction.userId.toJavaUuid())
-                statement.setString(5, interaction.channel.name)
-                statement.setString(6, interaction.notes)
-                statement.setObject(7, interaction.occurredAt.atOffset(ZoneOffset.UTC))
-                statement.executeUpdate() == 1
-            }
+            registerInteraction(connection, interaction)
+        }
+
+    internal fun registerInteraction(connection: java.sql.Connection, interaction: InteractionEntity): Boolean =
+        connection.prepareStatement(REGISTER_INTERACTION).use { statement ->
+            statement.setObject(1, interaction.id.toJavaUuid())
+            statement.setObject(2, interaction.tenantId.toJavaUuid())
+            statement.setObject(3, interaction.resourceId.toJavaUuid())
+            statement.setObject(4, interaction.userId.toJavaUuid())
+            statement.setString(5, interaction.channel.name)
+            statement.setString(6, interaction.notes)
+            statement.setObject(7, interaction.occurredAt.atOffset(ZoneOffset.UTC))
+            statement.executeUpdate() == 1
         }
 
     fun updateInteraction(interaction: InteractionEntity): Boolean =

@@ -116,6 +116,7 @@ class EngagementAccessImpl(
         tenantId: Uuid,
         followUpId: Uuid,
         completedOn: LocalDate,
+        interaction: Interaction?,
     ): CompleteFollowUpResult = withContext(jdbcDispatcher) {
         followUpRepository.inTransaction {
             val stored = getFollowUp(tenantId, followUpId, forUpdate = true)
@@ -127,6 +128,11 @@ class EngagementAccessImpl(
             }
 
             val completed = updateCompletion(tenantId, followUpId, completedOn)
+            interaction?.let {
+                check(interactionRepository.registerInteraction(connection, it.toEntity(tenantId))) {
+                    "Generated interaction ID already exists"
+                }
+            }
             val next = stored.ruleId?.let { ruleId ->
                 val rule = checkNotNull(getActiveRule(tenantId, ruleId)) {
                     "Open recurring follow-up has no active rule"

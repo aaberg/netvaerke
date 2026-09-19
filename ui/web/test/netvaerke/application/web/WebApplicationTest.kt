@@ -14,26 +14,34 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.Parameters
 import io.ktor.server.testing.testApplication
 import java.io.InputStream
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 import netvaerke.manager.network.ContactImageDto
 import netvaerke.manager.network.ContactImageUpdateDto
 import netvaerke.manager.network.ContactImageUploadDto
 import netvaerke.manager.network.ContactInteractionDto
-import netvaerke.manager.network.ContactOverviewDto
 import netvaerke.manager.network.ContactNotFoundException
+import netvaerke.manager.network.ContactOverviewDto
 import netvaerke.manager.network.ContactFollowUpCadenceDto
 import netvaerke.manager.network.ContactFollowUpCompletionDto
+import netvaerke.manager.network.ContactFollowUpStatusDto
+import netvaerke.manager.network.ContactFollowUpFrequencyDto
+import netvaerke.manager.network.ContactFollowUpIntervalUnitDto
+import netvaerke.manager.network.CompleteContactFollowUpDto
 import netvaerke.manager.network.ContactFollowUpDto
-import netvaerke.manager.network.CreateContactFollowUpDto
 import netvaerke.manager.network.DueContactFollowUpDto
+import netvaerke.manager.network.CreateContactFollowUpDto
 import netvaerke.manager.network.CreateContactInteractionDto
 import netvaerke.manager.network.CreateNewContactDto
-import netvaerke.manager.network.EmailAddressDto
 import netvaerke.manager.network.InteractionChannelDto
 import netvaerke.manager.network.NetworkManager
 import netvaerke.manager.network.NoteDto
@@ -43,6 +51,7 @@ import netvaerke.manager.network.TenantContactListItemDto
 import netvaerke.manager.network.UpdateContactInteractionDto
 import netvaerke.manager.network.UpdateContactDto
 import netvaerke.manager.network.WorkInfoDto
+import netvaerke.manager.network.EmailAddressDto
 import netvaerke.manager.membership.GetProfileRequest
 import netvaerke.manager.membership.GetProfileResponse
 import netvaerke.manager.membership.MembershipManager
@@ -83,7 +92,176 @@ class WebApplicationTest {
         assertEquals(PERSONAL_TENANT_ID, manager.lastTenantId)
         assertEquals(USER_ID, manager.lastActorId)
     }
+    @Test
+    fun `shows due follow-ups grouped on the dashboard`() = testApplication {
+        val manager = RecordingNetworkManager().apply {
+            dueFollowUps = listOf(
+                DueContactFollowUpDto(
+                    contact = TenantContactListItemDto(CONTACT_ID, "Ada Lovelace", "ada@example.test", null),
+                    followUp = ContactFollowUpDto(
+                        followUpId = FOLLOW_UP_ID,
+                        dueOn = "2026-09-17",
+                        recurrence = null,
+                        status = ContactFollowUpStatusDto.OPEN,
+                        completedOn = null,
+                        createdAt = "2026-09-01T00:00:00Z",
+                    ),
+                ),
+                DueContactFollowUpDto(
+                    contact = TenantContactListItemDto(CONTACT_ID, "Ada Lovelace", "ada@example.test", null),
+                    followUp = ContactFollowUpDto(
+                        followUpId = INTERACTION_ID,
+                        dueOn = "2026-09-18",
+                        recurrence = ContactFollowUpCadenceDto(
+                            1,
+                            ContactFollowUpIntervalUnitDto.MONTHS,
+                            ContactFollowUpFrequencyDto.MONTHLY,
+                        ),
+                        status = ContactFollowUpStatusDto.OPEN,
+                        completedOn = null,
+                        createdAt = "2026-09-01T00:00:00Z",
+                    ),
+                ),
+            )
+        }
+        application {
+            configureWebApplication(
+                config(),
+                membershipManager(),
+                manager,
+                RecordingFileStorage(),
+                authenticatedSession(),
+                Clock.fixed(Instant.parse("2026-09-18T12:00:00Z"), ZoneOffset.UTC),
+            )
+        }
 
+        val response = client.get("/dashboard") {
+            cookie("netvaerke_timezone", "UTC")
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val body = response.bodyAsText()
+        assertTrue(body.contains("Overdue"))
+        assertTrue(body.contains("Today"))
+        assertTrue(body.contains("Record interaction &amp; complete"))
+        assertTrue(body.contains("Reschedule"))
+        assertTrue(body.contains(">One-time<"))
+        assertTrue(body.contains(">Recurring<"))
+        assertTrue(body.contains(">Monthly<"))
+        assertEquals("2026-09-25", manager.lastFollowUpDueOn)
+    }
+
+    @Test
+    fun `separates active follow-ups and replaces an absent recurring series with its scheduler`() = testApplication {
+        val contact = TenantContactDto(CONTACT_ID, "Ada Lovelace", emptyList(), emptyList(), null, null, null)
+        val oneTime = ContactFollowUpDto(
+            followUpId = FOLLOW_UP_ID,
+            dueOn = "2026-10-01",
+            recurrence = null,
+            status = ContactFollowUpStatusDto.OPEN,
+            completedOn = null,
+            createdAt = "2026-09-01T00:00:00Z",
+        )
+        val recurring = ContactFollowUpDto(
+            followUpId = INTERACTION_ID,
+            dueOn = "2026-10-18",
+            recurrence = ContactFollowUpCadenceDto(
+                1,
+                ContactFollowUpIntervalUnitDto.MONTHS,
+                ContactFollowUpFrequencyDto.MONTHLY,
+            ),
+            status = ContactFollowUpStatusDto.OPEN,
+            completedOn = null,
+            createdAt = "2026-09-01T00:00:00Z",
+        )
+        val completed = ContactFollowUpDto(
+            followUpId = Uuid.parse("00000000-0000-0000-0000-000000000007"),
+            dueOn = "2024-01-01",
+            recurrence = null,
+            status = ContactFollowUpStatusDto.DONE,
+            completedOn = "2024-01-02",
+            createdAt = "2023-12-01T00:00:00Z",
+        )
+        val manager = RecordingNetworkManager().apply {
+            overview = ContactOverviewDto(contact, emptyList(), listOf(oneTime, recurring, completed))
+        }
+        application {
+            configureWebApplication(config(), membershipManager(), manager, RecordingFileStorage(), authenticatedSession())
+        }
+
+        val activeResponse = client.get("/contacts/$CONTACT_ID")
+
+        assertEquals(HttpStatusCode.OK, activeResponse.status)
+        val activeBody = activeResponse.bodyAsText()
+        assertTrue(activeBody.contains("Recurring follow-up"))
+        assertTrue(activeBody.contains("One-time follow-ups"))
+        assertTrue(activeBody.contains("Monthly"))
+        assertTrue(activeBody.contains("One-time"))
+        assertTrue(activeBody.contains("+ Add one-time follow-up"))
+        assertTrue(activeBody.contains("Change frequency"))
+        assertFalse(activeBody.contains("How often do you want to follow up with this contact?"))
+        assertFalse(activeBody.contains("+ Schedule follow-up"))
+        assertFalse(activeBody.contains("History ("))
+        assertFalse(activeBody.contains("1 Jan 2024"))
+
+        manager.overview = ContactOverviewDto(contact, emptyList(), listOf(oneTime, completed))
+        val noRecurringResponse = client.get("/contacts/$CONTACT_ID")
+
+        assertEquals(HttpStatusCode.OK, noRecurringResponse.status)
+        val noRecurringBody = noRecurringResponse.bodyAsText()
+        assertTrue(noRecurringBody.contains("How often do you want to follow up with this contact?"))
+        assertTrue(noRecurringBody.contains("Schedule follow-up"))
+        assertFalse(noRecurringBody.contains("Change frequency"))
+    }
+
+
+
+    @Test
+    fun `validates one-time and recurring scheduling separately`() = testApplication {
+        val manager = RecordingNetworkManager().apply {
+            overview = ContactOverviewDto(
+                contact = TenantContactDto(CONTACT_ID, "Ada Lovelace", emptyList(), emptyList(), null, null, null),
+                interactions = emptyList(),
+                followUps = emptyList(),
+            )
+        }
+        application {
+            configureWebApplication(config(), membershipManager(), manager, RecordingFileStorage(), authenticatedSession())
+        }
+
+        val form = client.get("/contacts/$CONTACT_ID")
+        val csrfToken = assertNotNull(
+            Regex("name=\"csrfToken\" value=\"([^\"]+)\"").find(form.bodyAsText())?.groupValues?.get(1),
+        )
+        suspend fun schedule(recurrence: String, dueOn: String? = null, frequency: String? = null) =
+            client.post("/contacts/$CONTACT_ID/follow-ups") {
+                cookie("netvaerke_csrf", csrfToken)
+                setBody(
+                    FormDataContent(
+                        Parameters.build {
+                            append("csrfToken", csrfToken)
+                            append("timeZone", "Europe/Copenhagen")
+                            append("recurrence", recurrence)
+                            dueOn?.let { append("dueOn", it) }
+                            frequency?.let { append("frequency", it) }
+                        },
+                    ),
+                )
+            }
+
+        assertEquals(HttpStatusCode.OK, schedule("NONE").status)
+        assertNull(manager.createdFollowUp)
+        assertEquals(HttpStatusCode.OK, schedule("RECURRING", frequency = "FORTNIGHTLY").status)
+        assertNull(manager.createdFollowUp)
+
+        val recurring = schedule("RECURRING", frequency = "MONTHLY")
+        assertEquals(HttpStatusCode.Found, recurring.status)
+        assertEquals("/contacts/$CONTACT_ID?followUpCreated=true", recurring.headers[HttpHeaders.Location])
+
+        val oneTime = schedule("NONE", dueOn = "2026-10-01", frequency = "IGNORED")
+        assertEquals(HttpStatusCode.Found, oneTime.status)
+        assertEquals("/contacts/$CONTACT_ID?followUpCreated=true", oneTime.headers[HttpHeaders.Location])
+    }
 
     @Test
     fun `opens a contact overview while retaining a direct edit link`() = testApplication {
@@ -493,6 +671,15 @@ class WebApplicationTest {
         var contacts: List<TenantContactListItemDto> = emptyList()
         var contact: TenantContactDto? = null
         var overview: ContactOverviewDto? = null
+        var dueFollowUps: List<DueContactFollowUpDto> = emptyList()
+        var lastFollowUpDueOn: String? = null
+        var createdFollowUp: CreateContactFollowUpDto? = null
+        var followUpContactId: Uuid? = null
+        var rescheduledFollowUpDueOn: String? = null
+        var changedFollowUpFrequency: ContactFollowUpFrequencyDto? = null
+        var completedFollowUpId: Uuid? = null
+        var completedFollowUpRequest: CompleteContactFollowUpDto? = null
+        var cancelledFollowUpId: Uuid? = null
         var createdContact: CreateNewContactDto? = null
         var updatedContact: UpdateContactDto? = null
         var createdInteraction: CreateContactInteractionDto? = null
@@ -529,7 +716,12 @@ class WebApplicationTest {
             tenantId: Uuid,
             actorId: Uuid,
             dueOn: String,
-        ): List<DueContactFollowUpDto> = emptyList()
+        ): List<DueContactFollowUpDto> {
+            lastTenantId = tenantId
+            lastActorId = actorId
+            lastFollowUpDueOn = dueOn
+            return dueFollowUps
+        }
 
         override suspend fun createNewContact(
             tenantId: Uuid,
@@ -618,7 +810,20 @@ class WebApplicationTest {
             actorId: Uuid,
             contactId: Uuid,
             request: CreateContactFollowUpDto,
-        ): ContactFollowUpDto = error("Follow-ups are not used by web tests")
+        ): ContactFollowUpDto {
+            lastTenantId = tenantId
+            lastActorId = actorId
+            followUpContactId = contactId
+            createdFollowUp = request
+            return ContactFollowUpDto(
+                followUpId = FOLLOW_UP_ID,
+                dueOn = "2026-10-01",
+                recurrence = null,
+                status = ContactFollowUpStatusDto.OPEN,
+                completedOn = null,
+                createdAt = "2026-09-18T00:00:00Z",
+            )
+        }
 
         override suspend fun rescheduleContactFollowUp(
             tenantId: Uuid,
@@ -626,29 +831,79 @@ class WebApplicationTest {
             contactId: Uuid,
             followUpId: Uuid,
             dueOn: String,
-        ): ContactFollowUpDto = error("Follow-ups are not used by web tests")
+        ): ContactFollowUpDto {
+            lastTenantId = tenantId
+            lastActorId = actorId
+            followUpContactId = contactId
+            rescheduledFollowUpDueOn = dueOn
+            return ContactFollowUpDto(followUpId, dueOn, null, ContactFollowUpStatusDto.OPEN, null, "2026-09-18T00:00:00Z")
+        }
 
-        override suspend fun changeContactFollowUpCadence(
+        override suspend fun changeContactFollowUpFrequency(
             tenantId: Uuid,
             actorId: Uuid,
             contactId: Uuid,
             followUpId: Uuid,
-            cadence: ContactFollowUpCadenceDto,
-        ): ContactFollowUpDto = error("Follow-ups are not used by web tests")
+            frequency: ContactFollowUpFrequencyDto,
+        ): ContactFollowUpDto {
+            lastTenantId = tenantId
+            lastActorId = actorId
+            followUpContactId = contactId
+            changedFollowUpFrequency = frequency
+            return ContactFollowUpDto(
+                followUpId,
+                "2026-09-18",
+                null,
+                ContactFollowUpStatusDto.OPEN,
+                null,
+                "2026-09-18T00:00:00Z",
+            )
+        }
 
         override suspend fun completeContactFollowUp(
             tenantId: Uuid,
             actorId: Uuid,
             contactId: Uuid,
             followUpId: Uuid,
-        ): ContactFollowUpCompletionDto = error("Follow-ups are not used by web tests")
+            request: CompleteContactFollowUpDto,
+        ): ContactFollowUpCompletionDto {
+            lastTenantId = tenantId
+            lastActorId = actorId
+            followUpContactId = contactId
+            completedFollowUpId = followUpId
+            completedFollowUpRequest = request
+            return ContactFollowUpCompletionDto(
+                completed = ContactFollowUpDto(
+                    followUpId,
+                    "2026-09-18",
+                    null,
+                    ContactFollowUpStatusDto.DONE,
+                    "2026-09-18",
+                    "2026-09-18T00:00:00Z",
+                ),
+                next = null,
+            )
+        }
 
         override suspend fun cancelContactFollowUp(
             tenantId: Uuid,
             actorId: Uuid,
             contactId: Uuid,
             followUpId: Uuid,
-        ): ContactFollowUpDto = error("Follow-ups are not used by web tests")
+        ): ContactFollowUpDto {
+            lastTenantId = tenantId
+            lastActorId = actorId
+            followUpContactId = contactId
+            cancelledFollowUpId = followUpId
+            return ContactFollowUpDto(
+                followUpId,
+                "2026-09-18",
+                null,
+                ContactFollowUpStatusDto.CANCELLED,
+                null,
+                "2026-09-18T00:00:00Z",
+            )
+        }
 
         override suspend fun reserveContactImageUpload(
             tenantId: Uuid,
@@ -710,5 +965,6 @@ class WebApplicationTest {
         val ORGANIZATION_TENANT_ID: Uuid = Uuid.parse("00000000-0000-0000-0000-000000000003")
         val CONTACT_ID: Uuid = Uuid.parse("00000000-0000-0000-0000-000000000004")
         val INTERACTION_ID: Uuid = Uuid.parse("00000000-0000-0000-0000-000000000005")
+        val FOLLOW_UP_ID: Uuid = Uuid.parse("00000000-0000-0000-0000-000000000006")
     }
 }

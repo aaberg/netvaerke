@@ -25,7 +25,7 @@
         </div>
     </header>
 
-    <main class="dashboard-main">
+    <main class="dashboard-main" data-time-zone-container>
         <div class="dashboard-title">
             <div>
                 <p class="eyebrow">YOUR SPACE</p>
@@ -33,6 +33,55 @@
             </div>
             <a class="button button-primary" href="/contacts/new">Add contact</a>
         </div>
+
+        <#if followUpMessage??>
+            <p class="flash-message">${followUpMessage?html}</p>
+        </#if>
+
+        <section class="dashboard-follow-ups" aria-labelledby="dashboard-follow-ups-heading">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">STAY CLOSE</p>
+                    <h2 id="dashboard-follow-ups-heading">Follow-ups</h2>
+                </div>
+                <span class="section-hint">Due through the next 7 days</span>
+            </div>
+            <#if followUpSections?size == 0>
+                <p class="follow-up-empty">No follow-ups due this week. Schedule one from a contact.</p>
+            <#else>
+                <div class="dashboard-follow-up-groups">
+                    <#list followUpSections as section>
+                        <section class="follow-up-group" aria-labelledby="follow-up-group-${section.label?lower_case?replace(" ", "-")}">
+                            <h3 id="follow-up-group-${section.label?lower_case?replace(" ", "-")}">${section.label?html}</h3>
+                            <ol class="dashboard-follow-up-list">
+                                <#list section.items as followUp>
+                                    <li class="dashboard-follow-up-row">
+                                        <div class="dashboard-follow-up-summary">
+                                            <a href="/contacts/${followUp.contactId?html}">${followUp.contactName?html}</a>
+                                            <span class="dashboard-follow-up-meta">
+                                                <span class="follow-up-type-label">${followUp.typeLabel?html}</span>
+                                                <span>${followUp.dueLabel?html}</span>
+                                                <#if followUp.frequencyLabel??><span>${followUp.frequencyLabel?html}</span></#if>
+                                            </span>
+                                        </div>
+                                        <div class="follow-up-actions">
+                                            <form method="post" action="/contacts/${followUp.contactId?html}/follow-ups/${followUp.followUpId?html}/complete">
+                                                <input type="hidden" name="csrfToken" value="${csrfToken?html}">
+                                                <input type="hidden" name="timeZone" value="${timeZone?html}" data-time-zone>
+                                                <input type="hidden" name="returnTo" value="dashboard">
+                                                <button class="button button-primary" type="submit">Mark done</button>
+                                            </form>
+                                            <a class="button" href="/contacts/${followUp.contactId?html}?completeFollowUp=${followUp.followUpId?html}#follow-up-${followUp.followUpId?html}">Record interaction &amp; complete</a>
+                                            <a class="button button-quiet" href="/contacts/${followUp.contactId?html}?rescheduleFollowUp=${followUp.followUpId?html}#follow-up-${followUp.followUpId?html}">Reschedule</a>
+                                        </div>
+                                    </li>
+                                </#list>
+                            </ol>
+                        </section>
+                    </#list>
+                </div>
+            </#if>
+        </section>
 
         <#if contacts?size == 0>
             <section class="empty-state">
@@ -67,5 +116,7 @@
         </#if>
     </main>
     <script type="module" src="/assets/hanko.js"></script>
+    <script src="/assets/time-zone.js"></script>
+    <script src="/assets/follow-up-form.js"></script>
 </body>
 </html>

@@ -1,11 +1,14 @@
 package netvaerke.access.engagement
 
+import java.time.Instant
 import java.time.LocalDate
 import javax.sql.DataSource
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -25,7 +28,9 @@ class FollowUpAccessTest {
     fun clearFollowUps() {
         dataSource.connection.use { connection ->
             connection.createStatement().use { statement ->
-                statement.executeUpdate("TRUNCATE TABLE engagement.follow_up, engagement.follow_up_rule")
+                statement.executeUpdate(
+                    "TRUNCATE TABLE engagement.follow_up, engagement.follow_up_rule, engagement.interaction",
+                )
             }
         }
     }
@@ -51,7 +56,7 @@ class FollowUpAccessTest {
         assertNull(access.getFollowUp(randomFollowUpUuid(), id))
         assertEquals(
             CompleteFollowUpResult.NotFound,
-            access.completeFollowUp(randomFollowUpUuid(), id, LocalDate.parse("2026-10-01")),
+            access.completeFollowUp(randomFollowUpUuid(), id, LocalDate.parse("2026-10-01"), null),
         )
 
         val unchanged = assertIs<RescheduleFollowUpResult.Rescheduled>(
@@ -65,14 +70,54 @@ class FollowUpAccessTest {
         assertEquals(LocalDate.parse("2026-10-15"), rescheduled.dueOn)
 
         val completion = assertIs<CompleteFollowUpResult.Completed>(
-            access.completeFollowUp(tenantId, id, LocalDate.parse("2026-10-16")),
+            access.completeFollowUp(tenantId, id, LocalDate.parse("2026-10-16"), null),
         ).completion
         assertEquals(FollowUpStatus.DONE, completion.completed.status)
         assertEquals(LocalDate.parse("2026-10-16"), completion.completed.completedOn)
         assertNull(completion.next)
         assertEquals(emptyList(), access.getOpenFollowUpsDueBy(tenantId, LocalDate.parse("2026-12-01")))
-        assertEquals(CompleteFollowUpResult.AlreadyDone, access.completeFollowUp(tenantId, id, LocalDate.parse("2026-10-17")))
+        assertEquals(CompleteFollowUpResult.AlreadyDone, access.completeFollowUp(tenantId, id, LocalDate.parse("2026-10-17"), null))
     }
+    @Test
+    fun `rolls back follow-up completion when interaction recording fails`() = runBlocking {
+        val tenantId = randomFollowUpUuid()
+        val resourceId = randomFollowUpUuid()
+        val followUpId = randomFollowUpUuid()
+        val interaction = Interaction(
+            id = randomFollowUpUuid(),
+            resourceId = resourceId,
+            userId = randomFollowUpUuid(),
+            channel = InteractionChannel.EMAIL,
+            notes = "Already recorded",
+            occurredAt = Instant.parse("2026-10-16T10:00:00Z"),
+        )
+        assertEquals(true, access.registerInteraction(tenantId, interaction))
+        assertIs<RegisterFollowUpResult.Registered>(
+            access.registerFollowUp(
+                tenantId,
+                RegisterFollowUp(
+                    id = followUpId,
+                    resourceId = resourceId,
+                    dueOn = LocalDate.parse("2026-10-16"),
+                    schedule = FollowUpSchedule.OneTime,
+                ),
+            ),
+        )
+
+        assertFailsWith<IllegalStateException> {
+            access.completeFollowUp(
+                tenantId,
+                followUpId,
+                LocalDate.parse("2026-10-16"),
+                interaction,
+            )
+        }
+
+        assertEquals(FollowUpStatus.OPEN, access.getFollowUp(tenantId, followUpId)?.status)
+        assertNotNull(access.getInteraction(tenantId, interaction.id))
+        Unit
+    }
+
 
     @Test
     fun `completing recurring work schedules from its actual completion date`() = runBlocking {
@@ -92,14 +137,14 @@ class FollowUpAccessTest {
         )
 
         val firstCompletion = assertIs<CompleteFollowUpResult.Completed>(
-            access.completeFollowUp(tenantId, first.id, LocalDate.parse("2026-02-02")),
+            access.completeFollowUp(tenantId, first.id, LocalDate.parse("2026-02-02"), null),
         ).completion
         val second = requireNotNull(firstCompletion.next)
         assertEquals(LocalDate.parse("2026-03-02"), second.dueOn)
         assertEquals(1, second.dueDateRevision)
         assertEquals(
             CompleteFollowUpResult.AlreadyDone,
-            access.completeFollowUp(tenantId, first.id, LocalDate.parse("2026-02-03")),
+            access.completeFollowUp(tenantId, first.id, LocalDate.parse("2026-02-03"), null),
         )
         assertEquals(
             listOf(second),
@@ -115,7 +160,7 @@ class FollowUpAccessTest {
         assertEquals(FollowUpSchedule.Recurring(everyTwoMonths), changed.schedule)
 
         val secondCompletion = assertIs<CompleteFollowUpResult.Completed>(
-            access.completeFollowUp(tenantId, second.id, LocalDate.parse("2026-04-05")),
+            access.completeFollowUp(tenantId, second.id, LocalDate.parse("2026-04-05"), null),
         ).completion
         val third = requireNotNull(secondCompletion.next)
         assertEquals(LocalDate.parse("2026-06-05"), third.dueOn)
@@ -145,7 +190,7 @@ class FollowUpAccessTest {
         assertEquals(FollowUpStatus.CANCELLED, cancelled.status)
         assertEquals(
             CompleteFollowUpResult.Cancelled,
-            access.completeFollowUp(tenantId, recurring.id, LocalDate.parse("2026-10-01")),
+            access.completeFollowUp(tenantId, recurring.id, LocalDate.parse("2026-10-01"), null),
         )
 
         val replacement = recurring.copy(id = randomFollowUpUuid())
