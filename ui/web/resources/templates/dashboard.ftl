@@ -29,9 +29,8 @@
         <div class="dashboard-title">
             <div>
                 <p class="eyebrow">YOUR SPACE</p>
-                <h1>Contacts</h1>
+                <h1>Dashboard</h1>
             </div>
-            <a class="button button-primary" href="/contacts/new">Add contact</a>
         </div>
 
         <#if followUpMessage??>
@@ -82,6 +81,10 @@
                 </div>
             </#if>
         </section>
+        <div class="section-heading">
+            <h2 id="dashboard-contacts-heading">Contacts</h2>
+            <a class="button button-primary" href="/contacts/new">Add contact</a>
+        </div>
 
         <#if contacts?size == 0>
             <section class="empty-state">
@@ -91,7 +94,7 @@
                 <a class="button button-primary" href="/contacts/new">Add your first contact</a>
             </section>
         <#else>
-            <section class="contact-list" aria-label="Contacts">
+            <section class="contact-list" aria-labelledby="dashboard-contacts-heading">
                 <#list contacts as contact>
                     <article class="contact-row">
                         <a class="contact-row-link" href="/contacts/${contact.contactId?html}">
