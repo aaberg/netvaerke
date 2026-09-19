@@ -59,12 +59,12 @@ interface NetworkManager {
         dueOn: String,
     ): ContactFollowUpDto
 
-    suspend fun changeContactFollowUpCadence(
+    suspend fun changeContactFollowUpFrequency(
         tenantId: Uuid,
         actorId: Uuid,
         contactId: Uuid,
         followUpId: Uuid,
-        cadence: ContactFollowUpCadenceDto,
+        frequency: ContactFollowUpFrequencyDto,
     ): ContactFollowUpDto
 
     suspend fun completeContactFollowUp(
@@ -72,6 +72,7 @@ interface NetworkManager {
         actorId: Uuid,
         contactId: Uuid,
         followUpId: Uuid,
+        request: CompleteContactFollowUpDto,
     ): ContactFollowUpCompletionDto
 
     suspend fun cancelContactFollowUp(

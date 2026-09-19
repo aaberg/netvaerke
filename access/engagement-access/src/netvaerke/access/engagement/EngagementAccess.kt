@@ -28,6 +28,7 @@ interface EngagementAccess {
         tenantId: Uuid,
         followUpId: Uuid,
         completedOn: LocalDate,
+        interaction: Interaction?,
     ): CompleteFollowUpResult
     suspend fun cancelFollowUp(tenantId: Uuid, followUpId: Uuid): CancelFollowUpResult
 }

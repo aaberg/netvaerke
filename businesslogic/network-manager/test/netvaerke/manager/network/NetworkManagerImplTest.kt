@@ -259,24 +259,21 @@ class NetworkManagerImplTest {
             tenantId,
             actorId,
             contactId,
-            CreateContactFollowUpDto(
-                dueOn = "2026-10-01",
-                recurrence = ContactFollowUpCadenceDto(1, ContactFollowUpIntervalUnitDto.DAYS),
+            CreateContactFollowUpDto.Recurring(
+                frequency = ContactFollowUpFrequencyDto.WEEKLY,
+                timeZone = "UTC",
             ),
         )
 
         assertEquals(ContactFollowUpStatusDto.OPEN, registered.status)
-        assertEquals(
-            ContactFollowUpCadenceDto(1, ContactFollowUpIntervalUnitDto.DAYS),
-            registered.recurrence,
-        )
+        assertEquals("2026-10-10", registered.dueOn)
         assertEquals(
             listOf(registered),
             manager.getContactOverview(tenantId, actorId, contactId)?.followUps,
         )
         assertEquals(
             registered,
-            manager.getOpenContactFollowUpsDueBy(tenantId, actorId, "2026-10-01").single().followUp,
+            manager.getOpenContactFollowUpsDueBy(tenantId, actorId, "2026-10-10").single().followUp,
         )
 
         val rescheduled = manager.rescheduleContactFollowUp(
@@ -288,21 +285,24 @@ class NetworkManagerImplTest {
         )
         assertEquals("2026-10-02", rescheduled.dueOn)
 
-        val changed = manager.changeContactFollowUpCadence(
+        val changed = manager.changeContactFollowUpFrequency(
             tenantId,
             actorId,
             contactId,
             registered.followUpId,
-            ContactFollowUpCadenceDto(2, ContactFollowUpIntervalUnitDto.DAYS),
+            ContactFollowUpFrequencyDto.MONTHLY,
         )
-        assertEquals(
-            ContactFollowUpCadenceDto(2, ContactFollowUpIntervalUnitDto.DAYS),
-            changed.recurrence,
-        )
+        assertEquals("2026-10-02", changed.dueOn)
 
-        val completion = manager.completeContactFollowUp(tenantId, actorId, contactId, registered.followUpId)
+        val completion = manager.completeContactFollowUp(
+            tenantId,
+            actorId,
+            contactId,
+            registered.followUpId,
+            CompleteContactFollowUpDto(timeZone = "UTC", interaction = null),
+        )
         assertEquals("2026-10-03", completion.completed.completedOn)
-        assertEquals("2026-10-05", completion.next?.dueOn)
+        assertEquals("2026-11-03", completion.next?.dueOn)
 
         val cancelled = manager.cancelContactFollowUp(
             tenantId,
@@ -312,6 +312,117 @@ class NetworkManagerImplTest {
         )
         assertEquals(ContactFollowUpStatusDto.CANCELLED, cancelled.status)
     }
+
+    @Test
+    fun `starts recurring follow-ups from the browser local date with calendar clamping`() = runBlocking {
+        val cases = listOf(
+            Triple(ContactFollowUpFrequencyDto.MONTHLY, "2024-02-01T00:30:00Z", "2024-02-29"),
+            Triple(ContactFollowUpFrequencyDto.YEARLY, "2024-03-01T00:30:00Z", "2025-02-28"),
+        )
+        for ((frequency, instant, expectedDueOn) in cases) {
+            val tenantId = randomUuid()
+            val actorId = randomUuid()
+            val contactId = randomUuid()
+            val contactAccess = RecordingContactAccess().apply {
+                save(tenantId, Contact(contactId, "Ada Lovelace", emptyList()))
+            }
+            val manager = NetworkManagerImpl(
+                AllowingAuthorizationEngine,
+                contactAccess,
+                RecordingEngagementAccess(),
+                Clock.fixed(Instant.parse(instant), ZoneOffset.UTC),
+            )
+
+            val followUp = manager.registerContactFollowUp(
+                tenantId,
+                actorId,
+                contactId,
+                CreateContactFollowUpDto.Recurring(frequency, "America/Los_Angeles"),
+            )
+
+            assertEquals(expectedDueOn, followUp.dueOn)
+        }
+    }
+
+    @Test
+    fun `rejects an invalid recurring time zone without creating a follow-up`() = runBlocking {
+        val tenantId = randomUuid()
+        val actorId = randomUuid()
+        val contactId = randomUuid()
+        val contactAccess = RecordingContactAccess().apply {
+            save(tenantId, Contact(contactId, "Ada Lovelace", emptyList()))
+        }
+        val manager = NetworkManagerImpl(
+            AllowingAuthorizationEngine,
+            contactAccess,
+            RecordingEngagementAccess(),
+            Clock.fixed(Instant.parse("2026-10-03T12:00:00Z"), ZoneOffset.UTC),
+        )
+
+        assertFailsWith<InvalidContactFollowUpTimeZoneException> {
+            manager.registerContactFollowUp(
+                tenantId,
+                actorId,
+                contactId,
+                CreateContactFollowUpDto.Recurring(ContactFollowUpFrequencyDto.WEEKLY, "Invalid/Zone"),
+            )
+        }
+        assertEquals(emptyList(), manager.getContactOverview(tenantId, actorId, contactId)?.followUps)
+
+        val followUp = manager.registerContactFollowUp(
+            tenantId,
+            actorId,
+            contactId,
+            CreateContactFollowUpDto.Recurring(ContactFollowUpFrequencyDto.WEEKLY, "UTC"),
+        )
+        assertEquals("2026-10-10", followUp.dueOn)
+    }
+
+    @Test
+    fun `completes follow-up using requested local date and records an interaction`() = runBlocking {
+        val tenantId = randomUuid()
+        val actorId = randomUuid()
+        val contactId = randomUuid()
+        val contactAccess = RecordingContactAccess().apply {
+            save(tenantId, Contact(contactId, "Ada Lovelace", emptyList()))
+        }
+        val manager = NetworkManagerImpl(
+            AllowingAuthorizationEngine,
+            contactAccess,
+            RecordingEngagementAccess(),
+            Clock.fixed(Instant.parse("2026-10-03T23:30:00Z"), ZoneOffset.UTC),
+        )
+        val followUp = manager.registerContactFollowUp(
+            tenantId,
+            actorId,
+            contactId,
+            CreateContactFollowUpDto.OneTime("2026-10-01"),
+        )
+        assertEquals("2026-10-01", followUp.dueOn)
+
+        val completion = manager.completeContactFollowUp(
+            tenantId,
+            actorId,
+            contactId,
+            followUp.followUpId,
+            CompleteContactFollowUpDto(
+                timeZone = "Asia/Tokyo",
+                interaction = CreateContactInteractionDto(
+                    channel = InteractionChannelDto.EMAIL,
+                    notes = "Sent a check-in.",
+                    occurredAt = "2026-10-03T23:30:00Z",
+                ),
+            ),
+        )
+
+        assertEquals("2026-10-04", completion.completed.completedOn)
+        assertNull(completion.next)
+        assertEquals(
+            "Sent a check-in.",
+            manager.getContactOverview(tenantId, actorId, contactId)?.interactions?.single()?.notes,
+        )
+    }
+
 
     @Test
     fun `hides deleted contacts and their open follow-ups`() = runBlocking {
@@ -332,13 +443,13 @@ class NetworkManagerImplTest {
             tenantId,
             actorId,
             deletedContactId,
-            CreateContactFollowUpDto("2026-10-01", recurrence = null),
+            CreateContactFollowUpDto.OneTime("2026-10-01"),
         )
         val activeFollowUp = manager.registerContactFollowUp(
             tenantId,
             actorId,
             activeContactId,
-            CreateContactFollowUpDto("2026-10-01", recurrence = null),
+            CreateContactFollowUpDto.OneTime("2026-10-01"),
         )
 
         manager.deleteContact(tenantId, actorId, deletedContactId)
@@ -375,12 +486,12 @@ class NetworkManagerImplTest {
             RecordingEngagementAccess(),
             Clock.fixed(Instant.parse("2026-10-03T00:00:00Z"), ZoneOffset.UTC),
         )
-        val recurrence = ContactFollowUpCadenceDto(1, ContactFollowUpIntervalUnitDto.MONTHS)
+        val frequency = ContactFollowUpFrequencyDto.MONTHLY
         val recurring = manager.registerContactFollowUp(
             tenantId,
             actorId,
             contactId,
-            CreateContactFollowUpDto("2026-10-01", recurrence),
+            CreateContactFollowUpDto.Recurring(frequency, "UTC"),
         )
 
         assertFailsWith<ActiveContactFollowUpRecurrenceException> {
@@ -388,7 +499,7 @@ class NetworkManagerImplTest {
                 tenantId,
                 actorId,
                 contactId,
-                CreateContactFollowUpDto("2026-11-01", recurrence),
+                CreateContactFollowUpDto.Recurring(frequency, "UTC"),
             )
         }
         assertFailsWith<ContactFollowUpNotFoundException> {
@@ -399,15 +510,15 @@ class NetworkManagerImplTest {
             tenantId,
             actorId,
             otherContactId,
-            CreateContactFollowUpDto("2026-10-01", recurrence = null),
+            CreateContactFollowUpDto.OneTime("2026-10-01"),
         )
         assertFailsWith<ContactFollowUpNotRecurringException> {
-            manager.changeContactFollowUpCadence(
+            manager.changeContactFollowUpFrequency(
                 tenantId,
                 actorId,
                 otherContactId,
                 oneTime.followUpId,
-                recurrence,
+                frequency,
             )
         }
 
@@ -425,12 +536,30 @@ class NetworkManagerImplTest {
             )
         }
         assertFailsWith<ContactFollowUpCancelledException> {
-            manager.completeContactFollowUp(tenantId, actorId, otherContactId, oneTime.followUpId)
+            manager.completeContactFollowUp(
+                tenantId,
+                actorId,
+                otherContactId,
+                oneTime.followUpId,
+                CompleteContactFollowUpDto(timeZone = "UTC", interaction = null),
+            )
         }
 
-        manager.completeContactFollowUp(tenantId, actorId, contactId, recurring.followUpId)
+        manager.completeContactFollowUp(
+            tenantId,
+            actorId,
+            contactId,
+            recurring.followUpId,
+            CompleteContactFollowUpDto(timeZone = "UTC", interaction = null),
+        )
         assertFailsWith<ContactFollowUpAlreadyCompletedException> {
-            manager.completeContactFollowUp(tenantId, actorId, contactId, recurring.followUpId)
+            manager.completeContactFollowUp(
+                tenantId,
+                actorId,
+                contactId,
+                recurring.followUpId,
+                CompleteContactFollowUpDto(timeZone = "UTC", interaction = null),
+            )
         }
         assertFailsWith<ContactFollowUpAlreadyCompletedException> {
             manager.cancelContactFollowUp(tenantId, actorId, contactId, recurring.followUpId)
@@ -598,6 +727,7 @@ private class RecordingEngagementAccess : EngagementAccess {
         tenantId: Uuid,
         followUpId: Uuid,
         completedOn: LocalDate,
+        interaction: Interaction?,
     ): CompleteFollowUpResult {
         val key = tenantId to followUpId
         val stored = followUps[key] ?: return CompleteFollowUpResult.NotFound
@@ -605,6 +735,9 @@ private class RecordingEngagementAccess : EngagementAccess {
             FollowUpStatus.DONE -> return CompleteFollowUpResult.AlreadyDone
             FollowUpStatus.CANCELLED -> return CompleteFollowUpResult.Cancelled
             FollowUpStatus.OPEN -> Unit
+        }
+        interaction?.let {
+            if (!registerInteraction(tenantId, it)) error("Generated interaction ID already exists")
         }
         val completed = stored.copy(status = FollowUpStatus.DONE, completedOn = completedOn)
         followUps[key] = completed

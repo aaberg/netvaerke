@@ -57,7 +57,7 @@ class FollowUpRepository(
         }
 
     internal inner class Transaction internal constructor(
-        private val connection: Connection,
+        internal val connection: Connection,
     ) {
         fun getFollowUp(tenantId: Uuid, followUpId: Uuid, forUpdate: Boolean = false): FollowUpEntity? =
             findFollowUp(connection, tenantId, followUpId, forUpdate)

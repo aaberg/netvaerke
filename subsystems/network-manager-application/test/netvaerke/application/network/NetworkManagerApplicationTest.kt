@@ -30,10 +30,10 @@ import netvaerke.access.tenant.TenantMemberRole
 import netvaerke.access.tenant.TenantType
 import netvaerke.access.tenant.repository.TenantRepository
 import netvaerke.manager.network.CreateNewContactDto
-import netvaerke.manager.network.ContactFollowUpCadenceDto
-import netvaerke.manager.network.ContactFollowUpIntervalUnitDto
-import netvaerke.manager.network.ContactFollowUpStatusDto
 import netvaerke.manager.network.CreateContactFollowUpDto
+import netvaerke.manager.network.ContactFollowUpFrequencyDto
+import netvaerke.manager.network.ContactFollowUpStatusDto
+import netvaerke.manager.network.CompleteContactFollowUpDto
 import netvaerke.manager.network.CreateContactInteractionDto
 import netvaerke.manager.network.EmailAddressDto
 import netvaerke.manager.network.NetworkManager
@@ -173,21 +173,19 @@ class NetworkManagerApplicationTest {
                             tenantId,
                             actorId,
                             created.contactId,
-                            CreateContactFollowUpDto(
-                                dueOn = "2026-10-01",
-                                recurrence = ContactFollowUpCadenceDto(
-                                    amount = 1,
-                                    unit = ContactFollowUpIntervalUnitDto.DAYS,
-                                ),
+                            CreateContactFollowUpDto.Recurring(
+                                frequency = ContactFollowUpFrequencyDto.WEEKLY,
+                                timeZone = "UTC",
                             ),
                         )
+                        assertEquals("2026-10-10", registeredFollowUp.dueOn)
                         assertEquals(
                             listOf(registeredFollowUp),
                             client.getContactOverview(tenantId, actorId, created.contactId)?.followUps,
                         )
                         assertEquals(
                             created.contactId,
-                            client.getOpenContactFollowUpsDueBy(tenantId, actorId, "2026-10-01")
+                            client.getOpenContactFollowUpsDueBy(tenantId, actorId, "2026-10-10")
                                 .single()
                                 .contact
                                 .contactId,
@@ -202,26 +200,24 @@ class NetworkManagerApplicationTest {
                         )
                         assertEquals("2026-10-02", rescheduledFollowUp.dueOn)
 
-                        val changedFollowUp = client.changeContactFollowUpCadence(
+                        val changedFollowUp = client.changeContactFollowUpFrequency(
                             tenantId,
                             actorId,
                             created.contactId,
                             registeredFollowUp.followUpId,
-                            ContactFollowUpCadenceDto(2, ContactFollowUpIntervalUnitDto.DAYS),
+                            ContactFollowUpFrequencyDto.MONTHLY,
                         )
-                        assertEquals(
-                            ContactFollowUpCadenceDto(2, ContactFollowUpIntervalUnitDto.DAYS),
-                            changedFollowUp.recurrence,
-                        )
+                        assertEquals("2026-10-02", changedFollowUp.dueOn)
 
                         val completion = client.completeContactFollowUp(
                             tenantId,
                             actorId,
                             created.contactId,
                             registeredFollowUp.followUpId,
+                            CompleteContactFollowUpDto(timeZone = "UTC", interaction = null),
                         )
                         assertEquals("2026-10-03", completion.completed.completedOn)
-                        assertEquals("2026-10-05", completion.next?.dueOn)
+                        assertEquals("2026-11-03", completion.next?.dueOn)
 
                         val cancelled = client.cancelContactFollowUp(
                             tenantId,
@@ -235,7 +231,7 @@ class NetworkManagerApplicationTest {
                             tenantId,
                             actorId,
                             created.contactId,
-                            CreateContactFollowUpDto(dueOn = "2026-10-03", recurrence = null),
+                            CreateContactFollowUpDto.OneTime(dueOn = "2026-10-03"),
                         )
                         client.deleteContact(tenantId, actorId, created.contactId)
 

@@ -1,23 +1,16 @@
 package netvaerke.manager.network
 
-import java.time.Clock
-import java.time.LocalDate
-import java.time.ZoneOffset
-import java.util.UUID
-import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 import netvaerke.access.contact.ContactAccess
 import netvaerke.access.contact.ContactImage
-import netvaerke.access.engagement.CancelFollowUpResult
-import netvaerke.access.engagement.ChangeFollowUpCadenceResult
-import netvaerke.access.engagement.CompleteFollowUpResult
-import netvaerke.access.engagement.EngagementAccess
-import netvaerke.access.engagement.FollowUp
-import netvaerke.access.engagement.Interaction
-import netvaerke.access.engagement.RegisterFollowUpResult
-import netvaerke.access.engagement.RescheduleFollowUpResult
+import netvaerke.access.engagement.*
 import netvaerke.engine.authorization.AuthorizationEngine
 import netvaerke.engine.authorization.Operation
+import java.time.Clock
+import java.time.LocalDate
+import java.time.ZoneId
+import java.util.*
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 class NetworkManagerImpl(
     private val authorizer: AuthorizationEngine,
@@ -161,11 +154,30 @@ class NetworkManagerImpl(
     ): ContactFollowUpDto {
         authorize(actorId, tenantId, Operation.UPDATE_CONTACTS)
         findContact(tenantId, contactId)
+        val dueOn: LocalDate
+        val schedule: FollowUpSchedule
+        when (request) {
+            is CreateContactFollowUpDto.OneTime -> {
+                dueOn = request.dueOn.toLocalDate("Follow-up due date")
+                schedule = FollowUpSchedule.OneTime
+            }
+            is CreateContactFollowUpDto.Recurring -> {
+                val timeZone = request.timeZone.toZoneId()
+                val cadence = request.frequency.toCadence()
+                dueOn = LocalDate.now(clock.withZone(timeZone)).plus(cadence)
+                schedule = FollowUpSchedule.Recurring(cadence)
+            }
+        }
         repeat(ID_GENERATION_ATTEMPTS) {
             when (
                 val result = engagementAccess.registerFollowUp(
                     tenantId,
-                    request.toRegistration(contactId, newFollowUpId()),
+                    RegisterFollowUp(
+                        id = newFollowUpId(),
+                        resourceId = contactId,
+                        dueOn = dueOn,
+                        schedule = schedule,
+                    ),
                 )
             ) {
                 is RegisterFollowUpResult.Registered -> return result.followUp.toDto()
@@ -200,18 +212,18 @@ class NetworkManagerImpl(
         }
     }
 
-    override suspend fun changeContactFollowUpCadence(
+    override suspend fun changeContactFollowUpFrequency(
         tenantId: Uuid,
         actorId: Uuid,
         contactId: Uuid,
         followUpId: Uuid,
-        cadence: ContactFollowUpCadenceDto,
+        frequency: ContactFollowUpFrequencyDto,
     ): ContactFollowUpDto {
         authorize(actorId, tenantId, Operation.UPDATE_CONTACTS)
         findContact(tenantId, contactId)
         findContactFollowUp(tenantId, contactId, followUpId)
         return when (
-            val result = engagementAccess.changeFollowUpCadence(tenantId, followUpId, cadence.toCadence())
+            val result = engagementAccess.changeFollowUpCadence(tenantId, followUpId, frequency.toCadence())
         ) {
             is ChangeFollowUpCadenceResult.Changed -> result.followUp.toDto()
             ChangeFollowUpCadenceResult.NotFound -> throw ContactFollowUpNotFoundException()
@@ -225,15 +237,19 @@ class NetworkManagerImpl(
         actorId: Uuid,
         contactId: Uuid,
         followUpId: Uuid,
+        request: CompleteContactFollowUpDto,
     ): ContactFollowUpCompletionDto {
         authorize(actorId, tenantId, Operation.UPDATE_CONTACTS)
         findContact(tenantId, contactId)
         findContactFollowUp(tenantId, contactId, followUpId)
+        val timeZone = request.timeZone.toZoneId()
+        val interaction = request.interaction?.toInteraction(contactId, actorId, randomUuid())
         return when (
             val result = engagementAccess.completeFollowUp(
                 tenantId,
                 followUpId,
-                LocalDate.now(clock.withZone(ZoneOffset.UTC)),
+                LocalDate.now(clock.withZone(timeZone)),
+                interaction,
             )
         ) {
             is CompleteFollowUpResult.Completed -> result.completion.toDto()
@@ -344,6 +360,7 @@ class ContactFollowUpAlreadyCompletedException : IllegalStateException("Contact 
 class ContactFollowUpAlreadyCancelledException : IllegalStateException("Contact follow-up is already cancelled")
 
 class ContactFollowUpCancelledException : IllegalStateException("Contact follow-up is cancelled")
+class InvalidContactFollowUpTimeZoneException : IllegalArgumentException("Contact follow-up time zone is invalid")
 
 private fun CreateNewContactDto.validateDetailPolicy() {
     require(emails.count { it.isPrimary } <= 1) { "A contact may have at most one primary email address" }
@@ -354,3 +371,12 @@ private fun UpdateContactDto.validateDetailPolicy() {
 }
 
 private fun randomUuid(): Uuid = Uuid.parse(UUID.randomUUID().toString())
+private fun String.toZoneId(): ZoneId = runCatching { ZoneId.of(this) }
+    .getOrElse { throw InvalidContactFollowUpTimeZoneException() }
+
+private fun LocalDate.plus(cadence: FollowUpCadence): LocalDate = when (cadence.unit) {
+    FollowUpIntervalUnit.DAYS -> plusDays(cadence.amount.toLong())
+    FollowUpIntervalUnit.WEEKS -> plusWeeks(cadence.amount.toLong())
+    FollowUpIntervalUnit.MONTHS -> plusMonths(cadence.amount.toLong())
+    FollowUpIntervalUnit.YEARS -> plusYears(cadence.amount.toLong())
+}
