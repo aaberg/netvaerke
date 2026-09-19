@@ -64,14 +64,8 @@
                                             </span>
                                         </div>
                                         <div class="follow-up-actions">
-                                            <form method="post" action="/contacts/${followUp.contactId?html}/follow-ups/${followUp.followUpId?html}/complete">
-                                                <input type="hidden" name="csrfToken" value="${csrfToken?html}">
-                                                <input type="hidden" name="timeZone" value="${timeZone?html}" data-time-zone>
-                                                <input type="hidden" name="returnTo" value="dashboard">
-                                                <button class="button button-primary" type="submit">Mark done</button>
-                                            </form>
-                                            <a class="button" href="/contacts/${followUp.contactId?html}?completeFollowUp=${followUp.followUpId?html}#follow-up-${followUp.followUpId?html}">Record interaction &amp; complete</a>
-                                            <a class="button button-quiet" href="/contacts/${followUp.contactId?html}?rescheduleFollowUp=${followUp.followUpId?html}#follow-up-${followUp.followUpId?html}">Reschedule</a>
+                                            <a class="button button-primary" href="/contacts/${followUp.contactId?html}/follow-ups/${followUp.followUpId?html}?returnTo=dashboard">Follow up</a>
+                                            <a class="button button-quiet" href="/contacts/${followUp.contactId?html}/follow-ups/${followUp.followUpId?html}?manage=reschedule&amp;returnTo=dashboard">Reschedule</a>
                                         </div>
                                     </li>
                                 </#list>

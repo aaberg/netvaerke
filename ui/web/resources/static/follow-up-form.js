@@ -4,10 +4,3 @@ document.querySelectorAll("[data-follow-up-cancel]").forEach((form) => {
         if (!window.confirm(message)) event.preventDefault();
     });
 });
-
-document.querySelectorAll("[data-follow-up-create-cancel]").forEach((button) => {
-    button.addEventListener("click", () => {
-        const details = button.closest("details");
-        if (details) details.open = false;
-    });
-});

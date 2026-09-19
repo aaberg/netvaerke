@@ -143,8 +143,8 @@ class WebApplicationTest {
         val body = response.bodyAsText()
         assertTrue(body.contains("Overdue"))
         assertTrue(body.contains("Today"))
-        assertTrue(body.contains("Record interaction &amp; complete"))
-        assertTrue(body.contains("Reschedule"))
+        assertTrue(body.contains(">Follow up</a>"))
+        assertTrue(body.contains("manage=reschedule"))
         assertTrue(body.contains(">One-time<"))
         assertTrue(body.contains(">Recurring<"))
         assertTrue(body.contains(">Monthly<"))
@@ -197,10 +197,11 @@ class WebApplicationTest {
         assertTrue(activeBody.contains("One-time follow-ups"))
         assertTrue(activeBody.contains("Monthly"))
         assertTrue(activeBody.contains("One-time"))
-        assertTrue(activeBody.contains("+ Add one-time follow-up"))
-        assertTrue(activeBody.contains("Change frequency"))
+        assertTrue(activeBody.contains("Follow up"))
+        assertTrue(activeBody.contains("manage=reschedule"))
         assertFalse(activeBody.contains("How often do you want to follow up with this contact?"))
-        assertFalse(activeBody.contains("+ Schedule follow-up"))
+        assertFalse(activeBody.contains("+ Add one-time follow-up"))
+        assertFalse(activeBody.contains("Change frequency"))
         assertFalse(activeBody.contains("History ("))
         assertFalse(activeBody.contains("1 Jan 2024"))
 
@@ -209,8 +210,8 @@ class WebApplicationTest {
 
         assertEquals(HttpStatusCode.OK, noRecurringResponse.status)
         val noRecurringBody = noRecurringResponse.bodyAsText()
-        assertTrue(noRecurringBody.contains("How often do you want to follow up with this contact?"))
-        assertTrue(noRecurringBody.contains("Schedule follow-up"))
+        assertTrue(noRecurringBody.contains("No repeating follow-up scheduled."))
+        assertTrue(noRecurringBody.contains("/follow-ups/new?recurrence=RECURRING"))
         assertFalse(noRecurringBody.contains("Change frequency"))
     }
 
@@ -261,6 +262,114 @@ class WebApplicationTest {
         val oneTime = schedule("NONE", dueOn = "2026-10-01", frequency = "IGNORED")
         assertEquals(HttpStatusCode.Found, oneTime.status)
         assertEquals("/contacts/$CONTACT_ID?followUpCreated=true", oneTime.headers[HttpHeaders.Location])
+    }
+
+    @Test
+    fun `opens a focused follow-up page and completes it with an interaction`() = testApplication {
+        val followUp = ContactFollowUpDto(
+            followUpId = FOLLOW_UP_ID,
+            dueOn = "2026-09-18",
+            recurrence = ContactFollowUpCadenceDto(1, ContactFollowUpIntervalUnitDto.MONTHS, ContactFollowUpFrequencyDto.MONTHLY),
+            status = ContactFollowUpStatusDto.OPEN,
+            completedOn = null,
+            createdAt = "2026-09-01T00:00:00Z",
+        )
+        val manager = RecordingNetworkManager().apply {
+            overview = ContactOverviewDto(
+                contact = TenantContactDto(
+                    contactId = CONTACT_ID,
+                    name = "Ada Lovelace",
+                    emails = listOf(EmailAddressDto("ada@example.test", isPrimary = true, label = "Work")),
+                    phoneNumbers = emptyList(),
+                    workInfo = null,
+                    note = null,
+                    image = null,
+                ),
+                interactions = emptyList(),
+                followUps = listOf(followUp),
+            )
+        }
+        application {
+            configureWebApplication(config(), membershipManager(), manager, RecordingFileStorage(), authenticatedSession())
+        }
+
+        val page = client.get("/contacts/$CONTACT_ID/follow-ups/$FOLLOW_UP_ID?returnTo=dashboard")
+
+        assertEquals(HttpStatusCode.OK, page.status)
+        val pageBody = page.bodyAsText()
+        assertTrue(pageBody.contains("Follow up with Ada Lovelace"))
+        assertTrue(pageBody.contains("Record the interaction"))
+        assertTrue(pageBody.contains("Save interaction &amp; complete"))
+        assertTrue(pageBody.contains("Complete without interaction"))
+        assertTrue(pageBody.contains("Recent interactions"))
+        assertFalse(pageBody.contains("Mark done"))
+        assertTrue(pageBody.contains("/assets/interaction-form.js"))
+
+        val csrfToken = assertNotNull(Regex("name=\"csrfToken\" value=\"([^\"]+)\"").find(pageBody)?.groupValues?.get(1))
+        val response = client.post("/contacts/$CONTACT_ID/follow-ups/$FOLLOW_UP_ID/complete-with-interaction") {
+            cookie("netvaerke_csrf", csrfToken)
+            setBody(
+                FormDataContent(
+                    Parameters.build {
+                        append("csrfToken", csrfToken)
+                        append("timeZone", "Europe/Copenhagen")
+                        append("returnTo", "dashboard")
+                        append("channel", "EMAIL")
+                        append("notes", "Sent a follow-up.")
+                        append("occurredAt", "2026-09-18T10:00:00Z")
+                    },
+                ),
+            )
+        }
+
+        assertEquals(HttpStatusCode.Found, response.status)
+        assertEquals("/dashboard?followUpCompleted=", response.headers[HttpHeaders.Location])
+        assertEquals(FOLLOW_UP_ID, manager.completedFollowUpId)
+        assertEquals(
+            CompleteContactFollowUpDto(
+                timeZone = "Europe/Copenhagen",
+                interaction = CreateContactInteractionDto(
+                    channel = InteractionChannelDto.EMAIL,
+                    notes = "Sent a follow-up.",
+                    occurredAt = "2026-09-18T10:00:00Z",
+                ),
+            ),
+            manager.completedFollowUpRequest,
+        )
+
+        manager.overview = ContactOverviewDto(
+            manager.overview!!.contact,
+            emptyList(),
+            listOf(followUp.copy(status = ContactFollowUpStatusDto.DONE, completedOn = "2026-09-18")),
+        )
+        val closedPage = client.get("/contacts/$CONTACT_ID/follow-ups/$FOLLOW_UP_ID")
+
+        assertEquals(HttpStatusCode.OK, closedPage.status)
+        assertTrue(closedPage.bodyAsText().contains("Follow-up completed"))
+        assertFalse(closedPage.bodyAsText().contains("Save interaction &amp; complete"))
+    }
+
+    @Test
+    fun `opens the selected follow-up scheduling page`() = testApplication {
+        val manager = RecordingNetworkManager().apply {
+            overview = ContactOverviewDto(
+                contact = TenantContactDto(CONTACT_ID, "Ada Lovelace", emptyList(), emptyList(), null, null, null),
+                interactions = emptyList(),
+                followUps = emptyList(),
+            )
+        }
+        application {
+            configureWebApplication(config(), membershipManager(), manager, RecordingFileStorage(), authenticatedSession())
+        }
+
+        val response = client.get("/contacts/$CONTACT_ID/follow-ups/new?recurrence=RECURRING")
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val body = response.bodyAsText()
+        assertTrue(body.contains("Schedule a follow-up"))
+        assertTrue(body.contains("name=\"recurrence\" value=\"RECURRING\""))
+        assertTrue(body.contains("How often do you want to follow up with this contact?"))
+        assertFalse(body.contains("name=\"dueOn\""))
     }
 
     @Test
