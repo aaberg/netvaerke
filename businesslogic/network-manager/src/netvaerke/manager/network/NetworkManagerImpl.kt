@@ -1,28 +1,16 @@
 package netvaerke.manager.network
 
+import netvaerke.access.contact.ContactAccess
+import netvaerke.access.contact.ContactImage
+import netvaerke.access.engagement.*
+import netvaerke.engine.authorization.AuthorizationEngine
+import netvaerke.engine.authorization.Operation
 import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.ZoneOffset
-import java.util.UUID
+import java.util.*
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
-import netvaerke.access.contact.ContactAccess
-import netvaerke.access.contact.ContactImage
-import netvaerke.access.engagement.CancelFollowUpResult
-import netvaerke.access.engagement.ChangeFollowUpCadenceResult
-import netvaerke.access.engagement.CompleteFollowUpResult
-import netvaerke.access.engagement.EngagementAccess
-import netvaerke.access.engagement.FollowUp
-import netvaerke.access.engagement.FollowUpCadence
-import netvaerke.access.engagement.FollowUpIntervalUnit
-import netvaerke.access.engagement.FollowUpSchedule
-import netvaerke.access.engagement.Interaction
-import netvaerke.access.engagement.RegisterFollowUp
-import netvaerke.access.engagement.RegisterFollowUpResult
-import netvaerke.access.engagement.RescheduleFollowUpResult
-import netvaerke.engine.authorization.AuthorizationEngine
-import netvaerke.engine.authorization.Operation
 
 class NetworkManagerImpl(
     private val authorizer: AuthorizationEngine,
